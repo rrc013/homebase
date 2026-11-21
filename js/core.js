@@ -15,6 +15,7 @@ export const S = {
   listId: localStorage.getItem('hb.list') || null,
   showDone: false,
   storeId: localStorage.getItem('hb.store') || null,
+  mineOnly: !!localStorage.getItem('hb.mineOnly'),
   listView: 'list', // 'list' | 'library'
   libQuery: '',
   photoUrls: {},

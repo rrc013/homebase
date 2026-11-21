@@ -5,7 +5,8 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 export const TABLES = ['households', 'members', 'lists', 'list_items', 'messages', 'countdowns',
-  'stores', 'catalog', 'catalog_locations', 'google_accounts', 'calendars', 'events', 'event_private', 'photos'];
+  'stores', 'catalog', 'catalog_locations', 'google_accounts', 'calendars', 'events', 'event_private', 'photos',
+  'kid_profiles', 'chores', 'routines', 'rewards', 'completions', 'push_subscriptions'];
 const BUCKET = 'item-photos';
 // tables where the app may only read some columns
 const COLUMNS = { google_accounts: 'id,household_id,member_id,google_email,status,last_sync,created_at' };
@@ -74,6 +75,8 @@ function createSupabaseBackend(sb) {
     async insert(table, row) { return ok(await sb.from(table).insert(row).select().single()); },
     async update(table, id, patch) { ok(await sb.from(table).update(patch).eq('id', id)); },
     async remove(table, id) { ok(await sb.from(table).delete().eq('id', id)); },
+    async updateWhere(table, col, val, patch) { ok(await sb.from(table).update(patch).eq(col, val)); },
+    async removeWhere(table, col, val) { ok(await sb.from(table).delete().eq(col, val)); },
     async removeMany(table, ids) { if (ids.length) ok(await sb.from(table).delete().in('id', ids)); },
     async uploadPhoto(householdId, blob, bucket = BUCKET) {
       const path = `${householdId}/${crypto.randomUUID()}.jpg`;
@@ -130,7 +133,41 @@ function createDemoBackend() {
     events: [],
     event_private: [],
     photos: [],
+    kid_profiles: [],
+    chores: [],
+    routines: [],
+    rewards: [],
+    completions: [],
+    push_subscriptions: [],
   };
+
+  // ---- demo kids data
+  db.kid_profiles.push({ member_id: har, household_id: hid, pet_kind: 'puppy', pet_name: 'Biscuit', morning_start: '06:45',
+    wake_time: '07:00', bedtime_start: '19:15', sleep_time: '20:00', voice: true });
+  const chore = (title, emoji, points, extra = {}) => {
+    const c = { id: uid(), household_id: hid, member_id: har, title, emoji, points, schedule: 'days', days: [0, 1, 2, 3, 4, 5, 6],
+      due_date: null, time_of_day: 'anytime', photo_proof: false, active: true, sort: db.chores.length, created_at: iso(now), ...extra };
+    db.chores.push(c); return c;
+  };
+  const toys = chore('Pick up toys', '🧸', 2, { time_of_day: 'evening' });
+  chore('Clear your plate', '🍽️', 1);
+  const feed = chore('Feed the pets', '🐾', 2, { time_of_day: 'morning' });
+  chore('Clothes in hamper', '🧺', 1, { time_of_day: 'evening' });
+  chore('Water the plants', '🪴', 3, { days: [6], photo_proof: true });
+  chore('Make your bed', '🛏️', 2, { time_of_day: 'morning', photo_proof: true });
+  chore('Match the socks', '🧦', 3, { schedule: 'weekly' });
+  const rr = (kind, steps, points = 5) => db.routines.push({ id: uid(), household_id: hid, member_id: har, kind, points, steps });
+  rr('morning', [['🚽', 'Go potty'], ['🪥', 'Brush your teeth'], ['👗', 'Get dressed'], ['🥣', 'Eat breakfast'], ['🎒', 'Get your backpack']].map(([emoji, title]) => ({ emoji, title })));
+  rr('bedtime', [['🧸', 'Clean up toys'], ['🛁', 'Bath time'], ['👕', 'Put on pajamas'], ['🪥', 'Brush your teeth'], ['🚽', 'Go potty'], ['📖', 'Story time'], ['💤', 'Lights out']].map(([emoji, title]) => ({ emoji, title })));
+  [['🍦', 'Ice cream treat', 15], ['🎬', 'Pick the family movie', 20], ['🛝', 'Park trip with Dad', 25], ['🌙', 'Stay up 15 min late', 25], ['🎨', 'New coloring book', 30], ['🧸', 'Small toy', 50]]
+    .forEach(([emoji, title, cost], i) => db.rewards.push({ id: uid(), household_id: hid, member_id: null, title, emoji, cost, active: true, sort: i, created_at: iso(now) }));
+  const dayStr = (d) => { const x = new Date(Date.now() + d * day); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const done = (kind, ref, title, emoji, points, d, extra = {}) => db.completions.push({ id: uid(), household_id: hid, member_id: har, kind, ref_id: ref,
+    title, emoji, day: dayStr(d), points, status: 'approved', photo_path: null, note: null, created_by: nic, created_at: iso(now + d * day), ...extra });
+  for (let d = -9; d < 0; d++) { done('chore', toys.id, 'Pick up toys', '🧸', 2, d); done('chore', feed.id, 'Feed the pets', '🐾', 2, d); done('routine', null, 'Morning routine', '☀️', 5, d); }
+  done('bonus', null, 'Helped Mom with groceries', '🌟', 3, -2, { note: 'Helped carry bags' });
+  done('redeem', null, 'Ice cream treat', '🍦', -15, -3);
+  done('chore', feed.id, 'Feed the pets', '🐾', 2, 0);
 
   // ---- demo calendars & events
   const accWork = uid(), accRob = uid(), accNic = uid();
@@ -259,6 +296,7 @@ function createDemoBackend() {
     async signOut() { user = null; authCb(null); },
     async fn(name, b = {}) {
       await new Promise((r) => setTimeout(r, 150));
+      if (name === 'notify') { console.info('[demo] notify', b); return { ok: true, sent: 0 }; }
       if (b.action === 'sync') return { skipped: true };
       if (b.action === 'auth_url') return { url: location.pathname + '?demo&code=demo&state=demo' };
       if (b.action === 'connect') return { ok: true, email: 'new.account@gmail.com' };
@@ -335,6 +373,8 @@ function createDemoBackend() {
       changed(table);
     },
     async removeMany(table, ids) { db[table] = db[table].filter((x) => !ids.includes(x.id)); changed(table); },
+    async updateWhere(table, col, val, patch) { db[table].filter((x) => x[col] === val).forEach((x) => Object.assign(x, patch)); changed(table); },
+    async removeWhere(table, col, val) { db[table] = db[table].filter((x) => x[col] !== val); changed(table); },
     async uploadPhoto(householdId, blob, _bucket) { const path = `${householdId}/${uid()}.jpg`; photos[path] = URL.createObjectURL(blob); return path; },
     async deletePhoto(path) { delete photos[path]; },
     async photoUrls(paths) { return Object.fromEntries(paths.filter((p) => photos[p]).map((p) => [p, photos[p]])); },

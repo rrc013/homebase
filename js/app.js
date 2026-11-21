@@ -12,6 +12,11 @@ import { viewCalendar, calendarSettingsHtml, handleOAuthReturn, syncNow, isHub }
 import { loadWeather, weatherPill } from './weather.js';
 import { signFamilyPhotos, photosSettingsHtml } from './photos.js';
 import { renderHub, startHubTimers } from './hub.js';
+import { viewKids, signChorePhotos, pendingApprovals } from './kids.js';
+import { renderBuddy, sheetBuddySetup } from './buddy.js';
+import { keepAwake } from './fun.js';
+import { parseQuick, quickLabel } from './quickadd.js';
+import { notificationsHtml } from './notify.js';
 
 // ------------------------------------------------------------------ data
 async function loadAll() {
@@ -21,6 +26,7 @@ async function loadAll() {
   const missing = S.data.catalog.map((c) => c.photo_path).filter((p) => p && !S.photoUrls[p]);
   if (missing.length) Object.assign(S.photoUrls, await S.api.photoUrls(missing).catch(() => ({})));
   await signFamilyPhotos();
+  await signChorePhotos();
 }
 
 let reloadTimer;
@@ -36,6 +42,7 @@ async function boot() {
   hooks.loadAll = loadAll;
   const params = new URLSearchParams(location.search);
   if (params.has('hub')) localStorage.setItem('hb.mode', 'hub');
+  if (params.get('tab')) { S.tab = params.get('tab'); history.replaceState(null, '', location.pathname + (params.has('demo') ? '?demo' : '')); }
   S.mode = localStorage.getItem('hb.mode') || 'phone';
   S.api = await createBackend();
   S.api.onAuthChange(async (u) => {
@@ -71,8 +78,8 @@ function render() {
   const tabs = [
     ['calendar', '📅', 'Calendar'],
     ['lists', '📝', 'Lists'],
+    ['kids', '🌟', 'Kids'],
     ['board', '📌', 'Board'],
-    ['countdowns', '⏳', 'Countdowns'],
     ['family', '🏡', 'Family'],
   ];
   // keep anything being typed if a live update re-draws the screen
@@ -80,10 +87,19 @@ function render() {
     const el = document.querySelector(sel);
     return el && { sel, value: el.value, focused: document.activeElement === el };
   }).filter(Boolean);
-  const views = { calendar: viewCalendar, lists: viewLists, board: viewBoard, countdowns: viewCountdowns, family: viewFamily };
-  if (isHub()) renderHub(views);
+  const views = { calendar: viewCalendar, lists: viewLists, kids: viewKids, board: viewBoard, countdowns: viewCountdowns, family: viewFamily };
+  if (S.mode === 'buddy') { document.body.classList.remove('hub-mode'); renderBuddy(); return; }
+  document.body.classList.remove('buddy-mode', 'buddy-night');
+  if (isHub()) { keepAwake(true); renderHub(views); }
   else {
   document.body.classList.remove('hub-mode');
+  if (S.tab === 'countdowns') { S.tab = 'board'; S.boardView = 'countdowns'; }
+  // on phones, Countdowns live inside the Board tab
+  views.board = () => `<div class="seg board-seg">
+      <button data-act="board-view" data-v="notes" class="${S.boardView !== 'countdowns' ? 'on' : ''}">📌 Notes</button>
+      <button data-act="board-view" data-v="countdowns" class="${S.boardView === 'countdowns' ? 'on' : ''}">⏳ Countdowns</button>
+    </div>${S.boardView === 'countdowns' ? viewCountdowns() : viewBoard()}`;
+  const pend = pendingApprovals().length;
   const body = views[S.tab] || viewLists;
   $app.innerHTML = `
     <header class="topbar">
@@ -93,7 +109,7 @@ function render() {
     ${S.api.demo ? '<div class="demo-banner">Demo mode — sample data only. Add your Supabase keys in <code>js/config.js</code>.</div>' : ''}
     <main class="content">${body()}</main>
     <nav class="tabbar">
-      ${tabs.map(([k, i, l]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}"><span>${i}</span>${l}</button>`).join('')}
+      ${tabs.map(([k, i, l]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}"><span>${i}</span>${l}${k === 'kids' && pend && me()?.kind === 'parent' ? `<em class="tab-badge">${pend}</em>` : ''}</button>`).join('')}
     </nav>`;
   }
   for (const k of keep) {
@@ -227,7 +243,51 @@ function currentList() {
   return lists.find((l) => l.id === S.listId) || lists[0];
 }
 
+const myOpenItems = () => S.data.list_items.filter((i) => !i.done && i.assigned_to && i.assigned_to === me()?.id);
+const parentsAndKids = () => sortedMembers();
+
+function listChips(activeId) {
+  const lists = sortedLists();
+  const mine = myOpenItems().length;
+  return `<div class="chips">
+      <button class="chip mine ${activeId === '__mine' ? 'on' : ''}" data-act="list-pick" data-id="__mine">⭐ For me${mine ? `<b>${mine}</b>` : ''}</button>
+      ${lists.map((l) => {
+        const n = S.data.list_items.filter((i) => i.list_id === l.id && !i.done).length;
+        return `<button class="chip ${l.id === activeId ? 'on' : ''}" data-act="list-pick" data-id="${l.id}">${esc(l.emoji)} ${esc(l.name)}${n ? `<b>${n}</b>` : ''}</button>`;
+      }).join('')}
+      <button class="chip add" data-act="list-new" aria-label="New list">＋</button>
+    </div>`;
+}
+
+// everything assigned to me, across every list
+function viewMine() {
+  const items = myOpenItems().sort((a, b) => {
+    if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
+    if (a.due_at) return -1; if (b.due_at) return 1;
+    return a.created_at.localeCompare(b.created_at);
+  });
+  const now = new Date(), endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const groups = [
+    ['Overdue', items.filter((i) => i.due_at && new Date(i.due_at) < now)],
+    ['Today', items.filter((i) => i.due_at && new Date(i.due_at) >= now && new Date(i.due_at) < endToday)],
+    ['Coming up', items.filter((i) => i.due_at && new Date(i.due_at) >= endToday)],
+    ['Anytime', items.filter((i) => !i.due_at)],
+  ].filter(([, g]) => g.length);
+  return `
+    ${listChips('__mine')}
+    <div class="list-head"><h2>⭐ For me</h2></div>
+    <form id="add-item" class="add-bar">
+      <div class="add-wrap"><input name="text" placeholder="Add a to-do for me… (try “call dentist friday 3pm”)" autocomplete="off" enterkeyhint="done" data-autofocus>
+        <div id="quick-preview" class="quick-preview" hidden></div></div>
+      <button class="btn primary round" type="submit" aria-label="Add">＋</button>
+    </form>
+    ${groups.map(([name, g]) => `<h3 class="section ${name === 'Overdue' ? 'warn' : ''}">${name}</h3>
+      <ul class="items">${g.map((i) => itemRow(i, null, false, true)).join('')}</ul>`).join('')
+      || '<div class="empty">Nothing assigned to you right now. 🎉<br><small>Tip: type “@Nicole” when adding a to-do to give it to her.</small></div>'}`;
+}
+
 function viewLists() {
+  if (S.listId === '__mine') return viewMine();
   const lists = sortedLists();
   const list = currentList();
   if (!list) return `<div class="empty">No lists yet.<br><button class="btn primary" data-act="list-new">Create a list</button></div>`;
@@ -236,7 +296,8 @@ function viewLists() {
   const shopping = list.kind === 'shopping';
   const store = shopping ? currentStore() : null;
   const items = S.data.list_items.filter((i) => i.list_id === list.id);
-  const open = items.filter((i) => !i.done).sort((a, b) => {
+  const mineOnly = !shopping && S.mineOnly;
+  const open = items.filter((i) => !i.done && (!mineOnly || i.assigned_to === me()?.id)).sort((a, b) => {
     if (list.kind === 'reminders' || a.due_at || b.due_at) {
       if (a.due_at && b.due_at) return a.due_at.localeCompare(b.due_at);
       if (a.due_at) return -1; if (b.due_at) return 1;
@@ -269,17 +330,12 @@ function viewLists() {
 
   const stores = sortedStores();
   return `
-    <div class="chips">
-      ${lists.map((l) => {
-        const n = S.data.list_items.filter((i) => i.list_id === l.id && !i.done).length;
-        return `<button class="chip ${l.id === list.id ? 'on' : ''}" data-act="list-pick" data-id="${l.id}">${esc(l.emoji)} ${esc(l.name)}${n ? `<b>${n}</b>` : ''}</button>`;
-      }).join('')}
-      <button class="chip add" data-act="list-new" aria-label="New list">＋</button>
-    </div>
+    ${listChips(list.id)}
     <div class="list-head">
       <h2>${esc(list.emoji)} ${esc(list.name)}</h2>
       <div class="row">
-        ${shopping ? '<button class="btn small-btn" data-act="lib-open">📚 Library</button>' : ''}
+        ${shopping ? '<button class="btn small-btn" data-act="lib-open">📚 Library</button>'
+          : `<button class="btn small-btn ${S.mineOnly ? 'primary' : ''}" data-act="mine-toggle">👤 ${S.mineOnly ? 'Mine only' : 'Everyone'}</button>`}
         <button class="icon-btn" data-act="list-edit" data-id="${list.id}" aria-label="List settings">⋯</button>
       </div>
     </div>
@@ -293,12 +349,12 @@ function viewLists() {
     <form id="add-item" class="add-bar">
       <div class="add-wrap">
         <input name="text" placeholder="${placeholder}" autocomplete="off" enterkeyhint="done" data-autofocus>
-        ${shopping ? '<div id="suggest" class="suggest" hidden></div>' : ''}
+        ${shopping ? '<div id="suggest" class="suggest" hidden></div>' : '<div id="quick-preview" class="quick-preview" hidden></div>'}
       </div>
       <button class="btn primary round" type="submit" aria-label="Add">＋</button>
     </form>
     <ul class="items">
-      ${openHtml || `<li class="empty small">All clear! 🎉</li>`}
+      ${openHtml || `<li class="empty small">${mineOnly ? 'Nothing here for you. 🎉' : 'All clear! 🎉'}</li>`}
     </ul>
     ${done.length ? `
       <div class="done-head">
@@ -308,19 +364,21 @@ function viewLists() {
       ${S.showDone ? `<ul class="items done">${done.map((i) => itemRow(i, store, false)).join('')}</ul>` : ''}` : ''}`;
 }
 
-function itemRow(i, store = null, grouped = false) {
+function itemRow(i, store = null, grouped = false, showList = false) {
   const who = byId('members', i.assigned_to);
   const overdue = !i.done && i.due_at && new Date(i.due_at) < new Date();
   const doneBy = i.done ? byId('members', i.done_by) : null;
   const c = i.catalog_id ? byId('catalog', i.catalog_id) : null;
   const sec = c && store && !grouped ? locationOf(c.id, store.id) : '';
+  const fromList = showList ? byId('lists', i.list_id) : null;
   const meta = [
+    fromList ? `<span>${esc(fromList.emoji)} ${esc(fromList.name)}</span>` : '',
     sec ? `<span class="sec-tag">📍 ${esc(sec)}</span>` : '',
     i.due_at ? `<span class="due ${overdue ? 'overdue' : ''}">⏰ ${esc(dueLabel(i.due_at))}</span>` : '',
     i.note ? `<span class="note-ico">📄 ${esc(i.note.length > 40 ? i.note.slice(0, 40) + '…' : i.note)}</span>` : '',
     doneBy ? `<span>✓ ${esc(doneBy.name)}</span>` : '',
   ].filter(Boolean).join('');
-  const isShop = currentList()?.kind === 'shopping';
+  const isShop = !showList && currentList()?.kind === 'shopping';
   return `
     <li class="item ${i.done ? 'is-done' : ''}">
       <button class="check" data-act="item-toggle" data-id="${i.id}" aria-label="${i.done ? 'Mark not done' : 'Mark done'}">${i.done ? '✓' : ''}</button>
@@ -448,10 +506,12 @@ function viewFamily() {
       <span><strong>${esc(household()?.weather_place || 'Set location')}</strong><small>Tap to change the weather location</small></span><span class="chev">›</span></button>
     <h3 class="section">This device</h3>
     <section class="card stack">
-      <div class="seg">
+      <div class="seg three">
         <button data-act="mode-set" data-mode="phone" class="${S.mode !== 'hub' ? 'on' : ''}">📱 Phone</button>
         <button data-act="mode-set" data-mode="hub" class="${S.mode === 'hub' ? 'on' : ''}">🖥️ Hub screen</button>
+        <button data-act="buddy-setup" class="${S.mode === 'buddy' ? 'on' : ''}">🧒 Kid's Buddy</button>
       </div>
+      ${S.mode === 'phone' || !S.mode ? notificationsHtml() : ''}
       <small class="muted">Hub screen = the big landscape dashboard with clock, weather and photo frame. Work events always show as “Work Meeting” on hubs.</small>
       ${S.mode === 'hub' ? `<label>Photo frame starts after
         <select data-act="saver-set">${[[0, 'Never'], [1, '1 minute'], [2, '2 minutes'], [5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes']]
@@ -481,7 +541,15 @@ function sheetItem(i) {
       text: f.get('text').trim(), note: f.get('note').trim() || null,
       assigned_to: f.get('assigned_to') || null, due_at: due ? new Date(due).toISOString() : null,
     }));
+    notifyAssigned(i.id, f.get('assigned_to') || null, i.assigned_to);
   });
+}
+
+// let the other parent's phone know they were given something
+function notifyAssigned(itemId, assignedTo, previous) {
+  const who = byId('members', assignedTo);
+  if (!who || who.kind !== 'parent' || who.id === me()?.id || assignedTo === previous) return;
+  S.api.fn('notify', { action: 'assigned', item_id: itemId }).catch(() => {});
 }
 
 function sheetList(l) {
@@ -776,7 +844,7 @@ document.addEventListener('click', async (e) => {
     case 'item-edit': {
       const item = byId('list_items', id);
       if (!item || id.startsWith('tmp-')) break;
-      if (currentList()?.kind !== 'shopping') { sheetItem(item); break; }
+      if (byId('lists', item.list_id)?.kind !== 'shopping') { sheetItem(item); break; }
       let c = item.catalog_id && byId('catalog', item.catalog_id);
       if (!c) { // older item not in the library yet: remember it first
         const cid = await run(() => S.api.rpc('remember_item', { p_name: item.text, p_emoji: guessEmoji(item.text) }));
@@ -875,7 +943,7 @@ document.addEventListener('submit', async (e) => {
     case 'add-item': {
       const text = fd.get('text').trim();
       if (!text) return;
-      if (currentList()?.kind === 'shopping') {
+      if (S.listId !== '__mine' && currentList()?.kind === 'shopping') {
         f.reset(); S.refocus = true;
         const known = S.data.catalog.find((c) => c.name.trim().toLowerCase() === text.toLowerCase());
         if (known) { await addFromCatalog(known); break; }
@@ -887,12 +955,22 @@ document.addEventListener('submit', async (e) => {
         break;
       }
       f.reset();
-      const temp = { id: 'tmp-' + Date.now(), list_id: S.listId, text, done: false, created_at: new Date().toISOString() };
+      // quick assign: "Call plumber @Nicole tomorrow 5pm"
+      const q = parseQuick(text, sortedMembers(), new Date(), me()?.id);
+      const mineView = S.listId === '__mine';
+      const target = mineView
+        ? (sortedLists().find((l) => l.kind === 'todo') || sortedLists().find((l) => l.kind !== 'shopping'))?.id
+        : S.listId;
+      if (!target) { toast('Create a to-do list first'); break; }
+      const assigned = q.member?.id || (mineView ? me().id : null);
+      const row = { household_id: household().id, list_id: target, text: q.text, created_by: me().id,
+        assigned_to: assigned, due_at: q.due ? q.due.toISOString() : null };
+      const temp = { ...row, id: 'tmp-' + Date.now(), done: false, created_at: new Date().toISOString() };
       S.data.list_items.push(temp); S.refocus = true; render();
-      await run(() => S.api.insert('list_items', {
-        household_id: household().id, list_id: S.listId, text, created_by: me().id,
-      }));
+      const saved = await run(() => S.api.insert('list_items', row));
       S.data.list_items = S.data.list_items.filter((i) => i.id !== temp.id);
+      if (saved && assigned) notifyAssigned(saved.id, assigned, null);
+      if (q.member || q.due) toast(`Added${q.member ? ` for ${q.member.name}` : ''}${q.due ? ` · ${quickLabel({ due: q.due })}` : ''}`);
       scheduleReload();
       break;
     }
@@ -912,6 +990,9 @@ document.addEventListener('submit', async (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $sheet.innerHTML) closeSheet(); });
 
 Object.assign(actions, {
+  'board-view': (el) => { S.boardView = el.dataset.v; render(); },
+  'mine-toggle': () => { S.mineOnly = !S.mineOnly; localStorage.setItem('hb.mineOnly', S.mineOnly ? '1' : ''); render(); },
+  'buddy-setup': () => sheetBuddySetup(),
   'mode-set': (el) => {
     S.mode = el.dataset.mode; localStorage.setItem('hb.mode', S.mode);
     S.hubTab = 'home'; S.tab = S.mode === 'hub' ? S.tab : 'family';
@@ -927,6 +1008,13 @@ document.addEventListener('change', (e) => {
 // Grocery suggestions as you type
 document.addEventListener('input', (e) => {
   if (e.target.matches('#add-item input')) renderSuggestions();
+  if (e.target.matches('#add-item input') && document.getElementById('quick-preview')) {
+    const box = document.getElementById('quick-preview');
+    const q = parseQuick(e.target.value, sortedMembers(), new Date(), me()?.id);
+    const label = quickLabel(q);
+    box.hidden = !label;
+    box.innerHTML = label ? `→ <b>${esc(q.text)}</b> · ${esc(label)}` : '';
+  }
   if (e.target.id === 'lib-search') {
     S.libQuery = e.target.value;
     const pos = e.target.selectionStart;

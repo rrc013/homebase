@@ -1,6 +1,8 @@
 # Homebase setup
 
 > **Phase 2 (Calendar, Hub, Weather, Photo frame):** after Phase 1 is working, follow **SETUP-PHASE-2.md**.
+> **Phase 3 (Chores, Stars, Rewards, Buddy):** follow **SETUP-PHASE-3.md**.
+> **Assigning + Notifications:** follow **SETUP-ASSIGN-NOTIFY.md**.
 
 ## Phase 1 setup
 
@@ -107,6 +109,14 @@ When I send updated files, upload them to the repo the same way (replace existin
 | `supabase/04-hub-home-calendars.sql` | Choose which calendars show on the hub Home screen: run once, after 03 |
 | `supabase/functions/google/index.ts` | Google Calendar server function (pasted into Supabase) |
 | `js/core.js`, `js/calendar.js`, `js/hub.js`, `js/weather.js`, `js/photos.js` | Shared helpers, calendar, hub screen, weather and photo frame |
+| `supabase/05-kids.sql` | Chores, stars, rewards, routines: run once, after 04 |
+| `js/kids.js`, `js/buddy.js`, `js/pets.js`, `js/fun.js` | Kids tab, kid's Buddy screen, virtual pet, voice and celebrations |
+| `SETUP-PHASE-3.md` | Step-by-step setup for chores and the Buddy |
+| `supabase/06-notifications.sql` | Phone notifications: run once, after 05 |
+| `supabase/07-reminder-schedule.sql` | Every-minute reminder check (put your project URL in first) |
+| `supabase/functions/notify/index.ts` | Notifications server function (Verify JWT off) |
+| `js/quickadd.js`, `js/notify.js` | "@Nicole tomorrow 5pm" quick assign; notification settings |
+| `SETUP-ASSIGN-NOTIFY.md` | Step-by-step setup for assigning + notifications |
 | `privacy.html` | Privacy policy page (Google requires one) |
 | `SETUP-PHASE-2.md` | Step-by-step setup for calendar sync and the hub |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable as an app |

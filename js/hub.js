@@ -19,6 +19,8 @@ function hiddenSummary(day) {
 }
 import { weatherNowHtml, forecastHtml, wx } from './weather.js';
 import { photoUrlList } from './photos.js';
+import { kids, profileOf, todayProgress, balance, earned, choresFor, choreDone } from './kids.js';
+import { petOf, levelInfo } from './pets.js';
 
 S.hubTab = S.hubTab || 'home';
 S.saverMin = +(localStorage.getItem('hb.saverMin') ?? 5);
@@ -30,10 +32,10 @@ const dateText = () => new Date().toLocaleDateString([], { weekday: 'long', mont
 export function renderHub(views) {
   document.body.classList.add('hub-mode');
   const nav = [
-    ['home', '🏠', 'Home'], ['calendar', '📅', 'Calendar'], ['lists', '📝', 'Lists'],
+    ['home', '🏠', 'Home'], ['people', '👥', 'People'], ['calendar', '📅', 'Calendar'], ['lists', '📝', 'Lists'], ['kids', '🌟', 'Kids'],
     ['board', '📌', 'Board'], ['countdowns', '⏳', 'Countdowns'], ['family', '⚙️', 'Settings'],
   ];
-  const body = S.hubTab === 'home' ? hubHome() : `<div class="hub-page">${(views[S.hubTab] || views.calendar)()}</div>`;
+  const body = S.hubTab === 'home' ? hubHome() : S.hubTab === 'people' ? hubPeople() : `<div class="hub-page">${(views[S.hubTab] || views.calendar)()}</div>`;
   $app.innerHTML = `
     <div class="hub">
       <nav class="hub-nav">
@@ -86,6 +88,14 @@ function hubHome() {
     </section>
 
     <section class="hub-col">
+      ${kids().length ? `<div class="card hub-kids">${kids().map((k) => {
+        const prof = profileOf(k), prog = todayProgress(k), pet = petOf(prof.pet_kind);
+        return `<button class="hub-kid" data-act="hub-tab" data-tab="kids" style="--c:${esc(k.color)}">
+          <span class="hk-pet">${pet ? pet.emoji : '🥚'}</span>
+          <span class="hk-info"><strong>${esc(k.name)}</strong><small>Level ${levelInfo(earned(k)).level} · ${prog.done}/${prog.total} today</small>
+            <span class="lvl-bar"><i style="width:${Math.round(prog.ratio * 100)}%"></i></span></span>
+          <span class="hk-stars">${balance(k)}⭐</span></button>`;
+      }).join('')}</div>` : ''}
       <div class="card">
         <div class="row between"><h3>🔔 Due today</h3><button class="link" data-act="hub-tab" data-tab="lists">All lists ›</button></div>
         <ul class="items mini">${reminders.map((i) => {
@@ -110,6 +120,45 @@ function hubHome() {
       }).join('')}
     </section>
   </div>`;
+}
+
+// ------------------------------------------------------------------ who's doing what (a column per person)
+function hubPeople() {
+  const today = new Date();
+  const endToday = addDays(today, 1);
+  const all = visibleEvents();
+  const todays = eventsOnDay(today, all);
+  const people = [...S.data.members].sort((a, b) => (a.kind === b.kind ? a.sort - b.sort : a.kind === 'parent' ? -1 : 1));
+  const shopIds = new Set(S.data.lists.filter((l) => l.kind === 'shopping').map((l) => l.id));
+  const tasksFor = (memberId) => S.data.list_items.filter((i) => !i.done && !shopIds.has(i.list_id)
+    && (i.assigned_to || null) === memberId && (memberId ? (!i.due_at || new Date(i.due_at) < endToday) : (i.due_at && new Date(i.due_at) < endToday)))
+    .sort((a, b) => (a.due_at || '9').localeCompare(b.due_at || '9')).slice(0, 8);
+  const taskRow = (i) => {
+    const overdue = i.due_at && new Date(i.due_at) < new Date();
+    return `<li class="item"><button class="check" data-act="item-toggle" data-id="${i.id}"></button>
+      <span class="item-main"><span class="item-text">${esc(i.text)}</span>
+      ${i.due_at ? `<span class="meta"><span class="due ${overdue ? 'overdue' : ''}">⏰ ${esc(dueLabel(i.due_at))}</span></span>` : ''}</span></li>`;
+  };
+  const column = (m) => {
+    const id = m?.id || null;
+    const evs = todays.filter((e) => (byId('calendars', e.calendar_id)?.member_id || null) === id);
+    const shown = evs.filter(onHome), hidden = evs.length - shown.length;
+    const tasks = tasksFor(id);
+    const kid = m?.kind === 'kid';
+    const chores = kid ? choresFor(m).filter((c) => !choreDone(c, m)) : [];
+    return `<section class="person-col" style="--c:${esc(m?.color || '#2F6F6A')}">
+      <header><span class="pc-emoji">${esc(m?.emoji || '🏡')}</span><strong>${esc(m?.name || 'Everyone')}</strong>
+        ${kid ? `<span class="pc-stars">${balance(m)}⭐</span>` : ''}</header>
+      ${shown.length || hidden ? `<h4>📅 Today</h4><div class="stack-sm">${shown.map((e) => evChip(e, today)).join('')}
+        ${hidden ? `<div class="hidden-sum" style="--c:${esc(m?.color || '#999')}">🔒 ${hidden} work meeting${hidden === 1 ? '' : 's'}</div>` : ''}</div>` : ''}
+      ${kid ? `<h4>🌟 Jobs left</h4><div class="chore-grid">${chores.map((c) => `
+        <button class="chore-tile" data-act="kid-chore" data-kid="${m.id}" data-id="${c.id}"><span class="ct-emoji">${esc(c.emoji)}</span>
+          <span class="ct-title">${esc(c.title)}</span><span class="ct-pts">${c.points}⭐</span></button>`).join('') || '<p class="muted small">All done! 🎉</p>'}</div>` : ''}
+      ${tasks.length || !kid ? `<h4>✅ To do</h4><ul class="items mini">${tasks.map(taskRow).join('') || '<li class="muted small">Nothing assigned 🎉</li>'}</ul>` : ''}
+    </section>`;
+  };
+  return `<div class="row between"><h2>👥 Who's doing what today</h2><span class="muted">${today.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span></div>
+    <div class="people-cols" style="--n:${people.length + 1}">${people.map(column).join('')}${column(null)}</div>`;
 }
 
 // keep the clock ticking without redrawing everything
@@ -158,7 +207,8 @@ export function showSaver() {
     const front = layers[slideIdx % 2], back = layers[(slideIdx + 1) % 2];
     const img = new Image();
     img.onload = () => {
-      front.style.backgroundImage = `url("${url}")`;
+      // whole photo on top (never cropped), blurred copy behind it fills the empty space
+      front.innerHTML = `<div class="saver-fill" style="background-image:url('${url}')"></div><img class="saver-photo" src="${url}" alt="">`;
       front.classList.add('show'); back.classList.remove('show');
     };
     img.src = url;
