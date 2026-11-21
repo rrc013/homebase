@@ -1,4 +1,8 @@
-# Homebase: Phase 1 setup
+# Homebase setup
+
+> **Phase 2 (Calendar, Hub, Weather, Photo frame):** after Phase 1 is working, follow **SETUP-PHASE-2.md**.
+
+## Phase 1 setup
 
 Phase 1 gives you shared **Lists** (groceries, to-dos, reminders), a **grocery library** that remembers items (with photos and aisle locations per store), the **family message board**, and **Countdowns** on your phone and Nicole's. Changes sync live between the two phones.
 
@@ -99,4 +103,10 @@ When I send updated files, upload them to the repo the same way (replace existin
 | `js/config.js` | **Your Supabase keys go here** |
 | `supabase/schema.sql` | Database setup: run once in Supabase |
 | `supabase/02-grocery-library.sql` | Grocery library update: run once, after schema.sql |
+| `supabase/03-calendar-hub.sql` | Calendar, photos and weather update: run once, after 02 |
+| `supabase/04-hub-home-calendars.sql` | Choose which calendars show on the hub Home screen: run once, after 03 |
+| `supabase/functions/google/index.ts` | Google Calendar server function (pasted into Supabase) |
+| `js/core.js`, `js/calendar.js`, `js/hub.js`, `js/weather.js`, `js/photos.js` | Shared helpers, calendar, hub screen, weather and photo frame |
+| `privacy.html` | Privacy policy page (Google requires one) |
+| `SETUP-PHASE-2.md` | Step-by-step setup for calendar sync and the hub |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable as an app |

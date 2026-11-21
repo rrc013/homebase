@@ -1,121 +1,17 @@
 import { createBackend, TABLES } from './db.js';
-
-// ------------------------------------------------------------------ state
-const S = {
-  api: null,
-  user: null,
-  data: Object.fromEntries(TABLES.map((t) => [t, []])),
-  tab: localStorage.getItem('hb.tab') || 'lists',
-  listId: localStorage.getItem('hb.list') || null,
-  showDone: false,
-  storeId: localStorage.getItem('hb.store') || null,
-  listView: 'list', // 'list' | 'library'
-  libQuery: '',
-  photoUrls: {},
-  authMode: 'signin',
-  onboardMode: 'create',
-};
-
-const $app = document.getElementById('app');
-const $sheet = document.getElementById('sheet-root');
-const $toast = document.getElementById('toast');
-
-const NOTE_COLORS = ['#FFE58F', '#FFC8DD', '#B5E3F7', '#C7F0BD', '#E2D4FF', '#FFD6A5'];
-const MEMBER_COLORS = ['#5B8DEF', '#E57373', '#F28CB1', '#7BC67E', '#FFB74D', '#9C8CF2', '#4DB6AC', '#A1887F'];
-const KID_EMOJIS = ['🦄', '🐻', '🦊', '🐢', '🐰', '🦁', '🐸', '🐼', '🐯', '🐶', '🐱', '🦋', '🌟', '🚀', '🦖', '🐬'];
-const PARENT_EMOJIS = ['🧔', '👩', '👨', '👱‍♀️', '🧑', '👩‍🦰', '👨‍🦱', '😎'];
-const LIST_EMOJIS = ['🛒', '✅', '🔔', '📝', '🏠', '🎁', '🧹', '💊', '🐶', '✈️', '🎄', '📚', '🔧', '💼', '🧺', '🍕'];
-const STORE_EMOJIS = ['🏪', '🛒', '🟢', '🔴', '🔵', '🟠', '🟣', '🎯', '🥕', '💊', '🐾', '🏬'];
-const GROCERY_EMOJIS = ['🛒', '🥛', '🥚', '🍞', '🧀', '🍎', '🍌', '🍓', '🥕', '🥦', '🥬', '🍅', '🥑', '🍋', '🍇', '🥔', '🧅', '🧄',
-  '🍗', '🥩', '🥓', '🐟', '🍝', '🍚', '🥣', '🥜', '🍪', '🍫', '🍿', '🧃', '☕', '🍵', '🥤', '🍷', '🍺', '🧈', '🍯', '🧂',
-  '🫒', '🍦', '🧊', '🍕', '🧻', '🧼', '🧽', '🧴', '🪥', '💊', '🩹', '👶', '🐶', '🐱', '🔋', '💡', '🌸', '🎂'];
-// Auto icon: first keyword found in the item name wins
-const FOOD_ICONS = [
-  ['peanut', '🥜'], ['milk', '🥛'], ['egg', '🥚'], ['bread', '🍞'], ['bagel', '🥯'], ['tortilla', '🫓'], ['cheese', '🧀'], ['butter', '🧈'],
-  ['yogurt', '🥄'], ['cream', '🍦'], ['ice cream', '🍦'], ['apple juice', '🧃'], ['juice', '🧃'], ['apple', '🍎'],
-  ['banana', '🍌'], ['strawberr', '🍓'], ['blueberr', '🫐'], ['grape', '🍇'], ['lemon', '🍋'], ['lime', '🍋'],
-  ['orange', '🍊'], ['peach', '🍑'], ['pear', '🍐'], ['cherr', '🍒'], ['watermelon', '🍉'], ['melon', '🍈'],
-  ['pineapple', '🍍'], ['mango', '🥭'], ['avocado', '🥑'], ['tomato', '🍅'], ['carrot', '🥕'], ['broccoli', '🥦'],
-  ['lettuce', '🥬'], ['spinach', '🥬'], ['salad', '🥗'], ['cucumber', '🥒'], ['pepper', '🫑'], ['corn', '🌽'],
-  ['potato', '🥔'], ['onion', '🧅'], ['garlic', '🧄'], ['mushroom', '🍄'], ['pea', '🫛'], ['bean', '🫘'],
-  ['chicken', '🍗'], ['turkey', '🦃'], ['beef', '🥩'], ['steak', '🥩'], ['pork', '🥩'], ['bacon', '🥓'],
-  ['sausage', '🌭'], ['hot dog', '🌭'], ['ham', '🍖'], ['fish', '🐟'], ['salmon', '🐟'], ['tuna', '🐟'],
-  ['shrimp', '🦐'], ['pasta', '🍝'], ['spaghetti', '🍝'], ['noodle', '🍜'], ['rice', '🍚'], ['cereal', '🥣'],
-  ['oat', '🥣'], ['peanut', '🥜'], ['nut', '🥜'], ['cookie', '🍪'], ['chocolate', '🍫'], ['candy', '🍬'],
-  ['popcorn', '🍿'], ['chip', '🥔'], ['cracker', '🍘'], ['pretzel', '🥨'], ['pizza', '🍕'], ['coffee', '☕'],
-  ['tea', '🍵'], ['soda', '🥤'], ['water', '💧'], ['wine', '🍷'], ['beer', '🍺'], ['honey', '🍯'], ['salt', '🧂'],
-  ['oil', '🫒'], ['flour', '🌾'], ['sugar', '🍬'], ['cake', '🎂'], ['muffin', '🧁'], ['ice', '🧊'], ['frozen', '🧊'],
-  ['paper towel', '🧻'], ['toilet', '🧻'], ['tissue', '🧻'], ['napkin', '🧻'], ['soap', '🧼'], ['detergent', '🧴'],
-  ['shampoo', '🧴'], ['lotion', '🧴'], ['sponge', '🧽'], ['toothpaste', '🪥'], ['toothbrush', '🪥'],
-  ['diaper', '👶'], ['wipes', '👶'], ['baby', '👶'], ['dog', '🐶'], ['cat', '🐱'], ['batter', '🔋'],
-  ['vitamin', '💊'], ['medicine', '💊'], ['bandage', '🩹'], ['flower', '🌸'], ['trash bag', '🗑️'], ['foil', '🧻'],
-];
-const guessEmoji = (name) => {
-  const n = ' ' + name.toLowerCase();
-  const hit = FOOD_ICONS.find(([k]) => n.includes(' ' + k)); // match at the start of a word
-  return hit ? hit[1] : '🛒';
-};
-const EVENT_EMOJIS =['🎉', '🎂', '🎄', '🦃', '🏖️', '✈️', '🏰', '🎃', '🐣', '🎓', '⚽', '💍', '👶', '🏡', '🎁', '⛪'];
-
-// ------------------------------------------------------------------ helpers
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const byId = (t, id) => S.data[t].find((r) => r.id === id);
-const me = () => S.data.members.find((m) => m.user_id === S.user?.id);
-const household = () => S.data.households[0];
-const sortedMembers = () => [...S.data.members].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
-const sortedLists = () => [...S.data.lists].sort((a, b) => a.sort - b.sort || a.created_at?.localeCompare(b.created_at));
-
-function toast(msg, ms = 2600) {
-  $toast.textContent = msg;
-  $toast.classList.add('show');
-  clearTimeout(toast.t);
-  toast.t = setTimeout(() => $toast.classList.remove('show'), ms);
-}
-
-async function run(fn, okMsg) {
-  try { const r = await fn(); if (okMsg) toast(okMsg); return r; }
-  catch (e) { console.error(e); toast(e.message || 'Something went wrong'); }
-}
-
-function relTime(isoStr) {
-  const s = (Date.now() - new Date(isoStr)) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
-  return new Date(isoStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function dueLabel(isoStr) {
-  const d = new Date(isoStr);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const that = new Date(d); that.setHours(0, 0, 0, 0);
-  const days = Math.round((that - today) / 86400000);
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  if (days === 0) return `Today ${time}`;
-  if (days === 1) return `Tomorrow ${time}`;
-  if (days === -1) return `Yesterday ${time}`;
-  if (days > 1 && days < 7) return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
-  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
-}
-
-function daysUntil(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const target = new Date(y, m - 1, d);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return Math.round((target - today) / 86400000);
-}
-
-// <input type="datetime-local"> wants local time without zone
-const toLocalInput = (isoStr) => {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-};
-
-const avatar = (m, size = '') => m
-  ? `<span class="avatar ${size}" style="--c:${esc(m.color)}" title="${esc(m.name)}">${esc(m.emoji)}</span>`
-  : '';
+import {
+  S, $app, $sheet, $toast, NOTE_COLORS, MEMBER_COLORS,
+  KID_EMOJIS, PARENT_EMOJIS, LIST_EMOJIS, STORE_EMOJIS, GROCERY_EMOJIS, FOOD_ICONS,
+  guessEmoji, EVENT_EMOJIS, esc, byId, me, household,
+  sortedMembers, sortedLists, toast, run, relTime, dueLabel,
+  daysUntil, toLocalInput, avatar, openSheet, closeSheet, pickerRow,
+  memberPicker, resizeImage,
+  actions, hooks,
+} from './core.js';
+import { viewCalendar, calendarSettingsHtml, handleOAuthReturn, syncNow, isHub } from './calendar.js';
+import { loadWeather, weatherPill } from './weather.js';
+import { signFamilyPhotos, photosSettingsHtml } from './photos.js';
+import { renderHub, startHubTimers } from './hub.js';
 
 // ------------------------------------------------------------------ data
 async function loadAll() {
@@ -124,6 +20,7 @@ async function loadAll() {
   TABLES.forEach((t, i) => { S.data[t] = results[i] || []; });
   const missing = S.data.catalog.map((c) => c.photo_path).filter((p) => p && !S.photoUrls[p]);
   if (missing.length) Object.assign(S.photoUrls, await S.api.photoUrls(missing).catch(() => ({})));
+  await signFamilyPhotos();
 }
 
 let reloadTimer;
@@ -134,6 +31,12 @@ function scheduleReload() {
 
 // ------------------------------------------------------------------ boot
 async function boot() {
+  hooks.render = render;
+  hooks.reload = scheduleReload;
+  hooks.loadAll = loadAll;
+  const params = new URLSearchParams(location.search);
+  if (params.has('hub')) localStorage.setItem('hb.mode', 'hub');
+  S.mode = localStorage.getItem('hb.mode') || 'phone';
   S.api = await createBackend();
   S.api.onAuthChange(async (u) => {
     const changed = (u?.id || null) !== (S.user?.id || null);
@@ -143,13 +46,18 @@ async function boot() {
   S.user = await S.api.getUser();
   await afterAuth();
   if ('serviceWorker' in navigator && !S.api.demo) navigator.serviceWorker.register('sw.js').catch(() => {});
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.user) scheduleReload(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.user) { scheduleReload(); syncNow(); } });
 }
 
 async function afterAuth() {
   if (S.user) {
     await run(loadAll);
     S.api.subscribe(() => scheduleReload());
+    render();
+    await handleOAuthReturn();
+    loadWeather();
+    syncNow();
+    startHubTimers();
   } else {
     TABLES.forEach((t) => { S.data[t] = []; });
   }
@@ -161,6 +69,7 @@ function render() {
   if (!S.user) return renderAuth();
   if (!me()) return renderOnboarding();
   const tabs = [
+    ['calendar', '📅', 'Calendar'],
     ['lists', '📝', 'Lists'],
     ['board', '📌', 'Board'],
     ['countdowns', '⏳', 'Countdowns'],
@@ -171,17 +80,22 @@ function render() {
     const el = document.querySelector(sel);
     return el && { sel, value: el.value, focused: document.activeElement === el };
   }).filter(Boolean);
-  const body = { lists: viewLists, board: viewBoard, countdowns: viewCountdowns, family: viewFamily }[S.tab] || viewLists;
+  const views = { calendar: viewCalendar, lists: viewLists, board: viewBoard, countdowns: viewCountdowns, family: viewFamily };
+  if (isHub()) renderHub(views);
+  else {
+  document.body.classList.remove('hub-mode');
+  const body = views[S.tab] || viewLists;
   $app.innerHTML = `
     <header class="topbar">
       <div class="brand"><img src="icons/icon-192.png" alt=""><div><h1>Homebase</h1><small>${esc(household()?.name || '')}</small></div></div>
-      ${avatar(me(), 'lg')}
+      <div class="row">${weatherPill()}${avatar(me(), 'lg')}</div>
     </header>
     ${S.api.demo ? '<div class="demo-banner">Demo mode — sample data only. Add your Supabase keys in <code>js/config.js</code>.</div>' : ''}
     <main class="content">${body()}</main>
     <nav class="tabbar">
       ${tabs.map(([k, i, l]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}"><span>${i}</span>${l}</button>`).join('')}
     </nav>`;
+  }
   for (const k of keep) {
     const el = document.querySelector(k.sel);
     if (!el) continue;
@@ -522,50 +436,33 @@ function viewFamily() {
     <div class="card list-card">${parents.map(row).join('')}</div>
     <div class="row between"><h3 class="section">Kids</h3><button class="link" data-act="kid-new">＋ Add kid</button></div>
     <div class="card list-card">${kids.map(row).join('') || '<div class="empty small">No kids added.</div>'}</div>
+    ${calendarSettingsHtml()}
+    ${photosSettingsHtml()}
     <div class="row between"><h3 class="section">Stores</h3><button class="link" data-act="store-new">＋ Add store</button></div>
     <div class="card list-card">${sortedStores().map((st) => `
       <button class="member" data-act="store-edit" data-id="${st.id}">
         <span class="avatar lg" style="--c:#ddd">${esc(st.emoji)}</span><span><strong>${esc(st.name)}</strong><small>${sectionsForStore(st).length} sections</small></span><span class="chev">›</span>
       </button>`).join('') || '<div class="empty small">Add the stores you shop at to save where items are.</div>'}</div>
+    <h3 class="section">Weather</h3>
+    <button class="card member" data-act="wx-location"><span class="avatar lg" style="--c:#ddd">🌤️</span>
+      <span><strong>${esc(household()?.weather_place || 'Set location')}</strong><small>Tap to change the weather location</small></span><span class="chev">›</span></button>
+    <h3 class="section">This device</h3>
+    <section class="card stack">
+      <div class="seg">
+        <button data-act="mode-set" data-mode="phone" class="${S.mode !== 'hub' ? 'on' : ''}">📱 Phone</button>
+        <button data-act="mode-set" data-mode="hub" class="${S.mode === 'hub' ? 'on' : ''}">🖥️ Hub screen</button>
+      </div>
+      <small class="muted">Hub screen = the big landscape dashboard with clock, weather and photo frame. Work events always show as “Work Meeting” on hubs.</small>
+      ${S.mode === 'hub' ? `<label>Photo frame starts after
+        <select data-act="saver-set">${[[0, 'Never'], [1, '1 minute'], [2, '2 minutes'], [5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes']]
+          .map(([v, t]) => `<option value="${v}" ${S.saverMin === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
+    </section>
     <section class="card stack">
       <small class="muted">Signed in as ${esc(S.user.email)}</small>
       <button class="btn ghost" data-act="signout">Sign out</button>
     </section>
-    <p class="muted center small">Homebase · Phase 1 — Lists, Grocery library, Board, Countdowns</p>`;
+    <p class="muted center small">Homebase · Calendar, Lists, Board, Countdowns, Hub</p>`;
 }
-
-// ------------------------------------------------------------------ sheets (bottom modals)
-function openSheet(html, onSubmit, onCancel) {
-  S.sheetCancel = onCancel || null;
-  $sheet.innerHTML = `<div class="backdrop" data-act="sheet-close"></div><form class="sheet" id="sheet-form">${html}</form>`;
-  requestAnimationFrame(() => $sheet.classList.add('open'));
-  const form = $sheet.querySelector('#sheet-form');
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const ok = await onSubmit?.(new FormData(form), e.submitter?.value);
-    if (ok !== false) { S.sheetCancel = null; closeSheet(); }
-  };
-  const first = form.querySelector('[data-focus]');
-  if (first) setTimeout(() => first.focus(), 250);
-}
-function closeSheet() {
-  S.sheetCancel?.(); S.sheetCancel = null;
-  $sheet.classList.remove('open'); setTimeout(() => { $sheet.innerHTML = ''; }, 200); }
-
-const pickerRow = (name, options, current, kind = 'emoji') => `
-  <div class="picker" data-picker="${name}">
-    <input type="hidden" name="${name}" value="${esc(current)}">
-    ${options.map((o) => kind === 'color'
-      ? `<button type="button" class="swatch ${o === current ? 'on' : ''}" style="--c:${o}" data-pick="${o}"></button>`
-      : `<button type="button" class="emo ${o === current ? 'on' : ''}" data-pick="${esc(o)}">${esc(o)}</button>`).join('')}
-  </div>`;
-
-const memberPicker = (current) => `
-  <div class="picker people" data-picker="assigned_to">
-    <input type="hidden" name="assigned_to" value="${esc(current || '')}">
-    <button type="button" class="person ${!current ? 'on' : ''}" data-pick="">Anyone</button>
-    ${sortedMembers().map((m) => `<button type="button" class="person ${m.id === current ? 'on' : ''}" data-pick="${m.id}" style="--c:${esc(m.color)}">${esc(m.emoji)} ${esc(m.name)}</button>`).join('')}
-  </div>`;
 
 function sheetItem(i) {
   openSheet(`
@@ -672,16 +569,6 @@ function sheetNote(n) {
     if (action === 'pin') await run(() => S.api.update('messages', n.id, { pinned: !n.pinned }));
     if (action === 'delete') await run(() => S.api.remove('messages', n.id), 'Deleted');
   });
-}
-
-// ---------------- grocery item sheet (library details + this trip)
-async function resizeImage(file, max = 900) {
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  return new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.82));
 }
 
 function sheetGrocery(item, c) {
@@ -951,6 +838,7 @@ document.addEventListener('click', async (e) => {
       scheduleReload();
       break;
     case 'sheet-close': closeSheet(); break;
+    default: if (actions[el.dataset.act]) await actions[el.dataset.act](el, e);
   }
 });
 
@@ -1022,6 +910,19 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $sheet.innerHTML) closeSheet(); });
+
+Object.assign(actions, {
+  'mode-set': (el) => {
+    S.mode = el.dataset.mode; localStorage.setItem('hb.mode', S.mode);
+    S.hubTab = 'home'; S.tab = S.mode === 'hub' ? S.tab : 'family';
+    render(); startHubTimers(); window.scrollTo(0, 0);
+  },
+});
+document.addEventListener('change', (e) => {
+  if (e.target.matches('[data-act=saver-set]')) {
+    S.saverMin = +e.target.value; localStorage.setItem('hb.saverMin', S.saverMin); startHubTimers();
+  }
+});
 
 // Grocery suggestions as you type
 document.addEventListener('input', (e) => {

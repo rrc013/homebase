@@ -1,7 +1,7 @@
 // Homebase service worker: makes the app installable and opens fast.
 // Network-first for app files (so updates show up right away), cache as fallback.
-const CACHE = 'homebase-v2';
-const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/db.js', 'js/config.js',
+const CACHE = 'homebase-v4';
+const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/core.js', 'js/db.js', 'js/config.js', 'js/calendar.js', 'js/hub.js', 'js/weather.js', 'js/photos.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
