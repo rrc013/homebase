@@ -4,7 +4,9 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
-export const TABLES = ['households', 'members', 'lists', 'list_items', 'messages', 'countdowns'];
+export const TABLES = ['households', 'members', 'lists', 'list_items', 'messages', 'countdowns',
+  'stores', 'catalog', 'catalog_locations'];
+const BUCKET = 'item-photos';
 
 export async function createBackend() {
   const wantDemo = new URLSearchParams(location.search).has('demo');
@@ -53,6 +55,17 @@ function createSupabaseBackend(sb) {
     async update(table, id, patch) { ok(await sb.from(table).update(patch).eq('id', id)); },
     async remove(table, id) { ok(await sb.from(table).delete().eq('id', id)); },
     async removeMany(table, ids) { if (ids.length) ok(await sb.from(table).delete().in('id', ids)); },
+    async uploadPhoto(householdId, blob) {
+      const path = `${householdId}/${crypto.randomUUID()}.jpg`;
+      ok(await sb.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg' }));
+      return path;
+    },
+    async deletePhoto(path) { if (path) await sb.storage.from(BUCKET).remove([path]); },
+    async photoUrls(paths) {
+      if (!paths.length) return {};
+      const data = ok(await sb.storage.from(BUCKET).createSignedUrls(paths, 60 * 60 * 6));
+      return Object.fromEntries(data.filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+    },
     subscribe(onChange) {
       if (channel) sb.removeChannel(channel);
       channel = sb.channel('homebase-live')
@@ -89,13 +102,42 @@ function createDemoBackend() {
     list_items: [],
     messages: [],
     countdowns: [],
+    stores: [],
+    catalog: [],
+    catalog_locations: [],
   };
+  const photos = {};
+  const publix = uid(), costco = uid();
+  db.stores.push(
+    { id: publix, household_id: hid, name: 'Publix', emoji: '🟢', sort: 0, section_order: ['Produce', 'Bakery', 'Deli', 'Aisle 3', 'Aisle 7', 'Dairy', 'Frozen'] },
+    { id: costco, household_id: hid, name: 'Costco', emoji: '🔴', sort: 1, section_order: [] },
+  );
+  const cat = (name, emoji, use_count, locs = {}, notes = null) => {
+    const id = uid();
+    db.catalog.push({ id, household_id: hid, name, emoji, photo_path: null, notes, use_count, last_used: iso(now - use_count * 3600e3), created_at: iso(now) });
+    for (const [store, section] of Object.entries(locs)) {
+      db.catalog_locations.push({ id: uid(), household_id: hid, catalog_id: id, store_id: store === 'p' ? publix : costco, section });
+    }
+    return id;
+  };
+  const C = {
+    milk: cat('Milk', '🥛', 30, { p: 'Dairy', c: 'Fridge wall' }, 'Organic whole milk, red cap'),
+    straw: cat('Strawberries', '🍓', 14, { p: 'Produce' }),
+    gold: cat('Goldfish crackers', '🐟', 12, { p: 'Aisle 7', c: 'Snack aisle' }, 'Harper likes the colors ones'),
+    coffee: cat('Coffee beans', '☕', 9, { p: 'Aisle 3' }),
+    ban: cat('Bananas', '🍌', 25, { p: 'Produce', c: 'Produce room' }),
+  };
+  cat('Eggs', '🥚', 22, { p: 'Dairy' }); cat('Bread', '🍞', 18, { p: 'Bakery' }); cat('Chicken breast', '🍗', 11, { c: 'Meat' });
+  cat('Apple juice', '🧃', 8, { p: 'Aisle 3' }); cat('Paper towels', '🧻', 6, { c: 'Paper goods' }); cat('Cheddar cheese', '🧀', 10, { p: 'Deli' });
+  cat('Frozen peas', '🫛', 4, { p: 'Frozen' }); cat('Yogurt pouches', '🥄', 13, { p: 'Dairy' });
   const item = (list_id, text, extra = {}) => db.list_items.push({
     id: uid(), household_id: hid, list_id, text, note: null, done: false, done_at: null, done_by: null,
     assigned_to: null, due_at: null, created_by: rob, created_at: iso(now - Math.random() * day), ...extra,
   });
-  item(groc, 'Milk'); item(groc, 'Strawberries', { created_by: nic }); item(groc, 'Goldfish crackers', { note: 'The big carton' });
-  item(groc, 'Coffee beans'); item(groc, 'Bananas', { done: true, done_at: iso(now - 3600e3), done_by: nic });
+  item(groc, 'Milk', { catalog_id: C.milk }); item(groc, 'Strawberries', { created_by: nic, catalog_id: C.straw });
+  item(groc, 'Goldfish crackers', { note: 'The big carton', catalog_id: C.gold });
+  item(groc, 'Coffee beans', { catalog_id: C.coffee }); item(groc, 'Dish soap');
+  item(groc, 'Bananas', { done: true, done_at: iso(now - 3600e3), done_by: nic, catalog_id: C.ban });
   item(todo, 'Call Formella about cabinets', { assigned_to: rob });
   item(todo, 'Schedule pediatrician visit', { assigned_to: nic, due_at: iso(now + 2 * day) });
   item(todo, 'Return library books', { assigned_to: har });
@@ -126,7 +168,18 @@ function createDemoBackend() {
     async signUp(email) { user = { id: 'demo-user', email }; authCb(user); return { needsConfirm: false }; },
     async resetPassword() {},
     async signOut() { user = null; authCb(null); },
-    async rpc(fn) {
+    async rpc(fn, args = {}) {
+      if (fn === 'remember_item') {
+        const key = args.p_name.trim().toLowerCase();
+        let c = db.catalog.find((x) => x.name.trim().toLowerCase() === key);
+        if (c) { c.use_count += 1; c.last_used = iso(Date.now()); }
+        else {
+          c = { id: uid(), household_id: hid, name: args.p_name.trim(), emoji: args.p_emoji || '🛒', photo_path: null, notes: null, use_count: 1, last_used: iso(Date.now()), created_at: iso(Date.now()) };
+          db.catalog.push(c);
+        }
+        changed('catalog');
+        return c.id;
+      }
       if (fn === 'reset_join_code') {
         db.households[0].join_code = Math.random().toString(36).slice(2, 8).toUpperCase();
         changed('households');
@@ -145,9 +198,17 @@ function createDemoBackend() {
     async remove(table, id) {
       db[table] = db[table].filter((x) => x.id !== id);
       if (table === 'lists') db.list_items = db.list_items.filter((i) => i.list_id !== id);
+      if (table === 'catalog') {
+        db.catalog_locations = db.catalog_locations.filter((l) => l.catalog_id !== id);
+        db.list_items.forEach((i) => { if (i.catalog_id === id) i.catalog_id = null; });
+      }
+      if (table === 'stores') db.catalog_locations = db.catalog_locations.filter((l) => l.store_id !== id);
       changed(table);
     },
     async removeMany(table, ids) { db[table] = db[table].filter((x) => !ids.includes(x.id)); changed(table); },
+    async uploadPhoto(householdId, blob) { const path = `${householdId}/${uid()}.jpg`; photos[path] = URL.createObjectURL(blob); return path; },
+    async deletePhoto(path) { delete photos[path]; },
+    async photoUrls(paths) { return Object.fromEntries(paths.filter((p) => photos[p]).map((p) => [p, photos[p]])); },
     subscribe(cb) { changeCb = cb; },
   };
 }

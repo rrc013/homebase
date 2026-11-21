@@ -1,6 +1,6 @@
 # Homebase: Phase 1 setup
 
-Phase 1 gives you shared **Lists** (groceries, to-dos, reminders), the **family message board**, and **Countdowns** on your phone and Nicole's. Changes sync live between the two phones.
+Phase 1 gives you shared **Lists** (groceries, to-dos, reminders), a **grocery library** that remembers items (with photos and aisle locations per store), the **family message board**, and **Countdowns** on your phone and Nicole's. Changes sync live between the two phones.
 
 Setup takes about 15 minutes. It follows the same steps as Still I Do.
 
@@ -11,6 +11,7 @@ Setup takes about 15 minutes. It follows the same steps as Still I Do.
 1. Go to supabase.com → **New project**. Name it `homebase`, set a database password (save it), and pick the East US region.
 2. When it finishes, open **SQL Editor → New query**.
 3. Open `supabase/schema.sql` from this folder, copy all of it, paste it in, and click **Run**. You should see "Success. No rows returned."
+4. Click **New query** again and do the same with `supabase/02-grocery-library.sql`. This adds the grocery library, stores and photo storage.
 
 ## 2. Connect the app to Supabase
 
@@ -64,6 +65,20 @@ Once you've both joined, go to **Authentication → Sign In / Providers** in Sup
 
 Open `index.html?demo` (or your Pages link with `?demo` at the end) to try the app with sample data. Nothing is saved in demo mode.
 
+## Already set up before the grocery library?
+
+1. Run `supabase/02-grocery-library.sql` in the SQL Editor.
+2. Upload the new files to GitHub, replacing the old ones. **Don't replace `js/config.js`**, since it holds your keys; skip it when uploading.
+
+## Using the grocery library
+
+- Start typing on the grocery list and suggestions appear from items you've bought before. Tapping the box with nothing typed shows your most frequently bought items.
+- Every new grocery item is remembered automatically and gets a food icon.
+- Tap any grocery item to add a photo, the aisle or section at each store, and notes like brand or shelf. That info stays with the item for every future trip.
+- Add your stores on the Family tab, or with **＋ Add your stores** on the grocery list. Pick **Shopping at** to group the list by that store's sections; unsorted items go at the bottom.
+- In a store's settings, put the sections in the order you walk the store.
+- **📚 Library** shows everything you've saved, so you can search it, edit items or add them back to the list.
+
 ## Updating later
 
 When I send updated files, upload them to the repo the same way (replace existing files). If an update includes SQL, run it in the SQL Editor. Phones pick up the new version the next time the app is opened.
@@ -83,4 +98,5 @@ When I send updated files, upload them to the repo the same way (replace existin
 | `js/db.js` | Talks to Supabase (or demo data) |
 | `js/config.js` | **Your Supabase keys go here** |
 | `supabase/schema.sql` | Database setup: run once in Supabase |
+| `supabase/02-grocery-library.sql` | Grocery library update: run once, after schema.sql |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable as an app |

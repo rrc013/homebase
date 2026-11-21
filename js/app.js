@@ -8,6 +8,10 @@ const S = {
   tab: localStorage.getItem('hb.tab') || 'lists',
   listId: localStorage.getItem('hb.list') || null,
   showDone: false,
+  storeId: localStorage.getItem('hb.store') || null,
+  listView: 'list', // 'list' | 'library'
+  libQuery: '',
+  photoUrls: {},
   authMode: 'signin',
   onboardMode: 'create',
 };
@@ -21,7 +25,37 @@ const MEMBER_COLORS = ['#5B8DEF', '#E57373', '#F28CB1', '#7BC67E', '#FFB74D', '#
 const KID_EMOJIS = ['🦄', '🐻', '🦊', '🐢', '🐰', '🦁', '🐸', '🐼', '🐯', '🐶', '🐱', '🦋', '🌟', '🚀', '🦖', '🐬'];
 const PARENT_EMOJIS = ['🧔', '👩', '👨', '👱‍♀️', '🧑', '👩‍🦰', '👨‍🦱', '😎'];
 const LIST_EMOJIS = ['🛒', '✅', '🔔', '📝', '🏠', '🎁', '🧹', '💊', '🐶', '✈️', '🎄', '📚', '🔧', '💼', '🧺', '🍕'];
-const EVENT_EMOJIS = ['🎉', '🎂', '🎄', '🦃', '🏖️', '✈️', '🏰', '🎃', '🐣', '🎓', '⚽', '💍', '👶', '🏡', '🎁', '⛪'];
+const STORE_EMOJIS = ['🏪', '🛒', '🟢', '🔴', '🔵', '🟠', '🟣', '🎯', '🥕', '💊', '🐾', '🏬'];
+const GROCERY_EMOJIS = ['🛒', '🥛', '🥚', '🍞', '🧀', '🍎', '🍌', '🍓', '🥕', '🥦', '🥬', '🍅', '🥑', '🍋', '🍇', '🥔', '🧅', '🧄',
+  '🍗', '🥩', '🥓', '🐟', '🍝', '🍚', '🥣', '🥜', '🍪', '🍫', '🍿', '🧃', '☕', '🍵', '🥤', '🍷', '🍺', '🧈', '🍯', '🧂',
+  '🫒', '🍦', '🧊', '🍕', '🧻', '🧼', '🧽', '🧴', '🪥', '💊', '🩹', '👶', '🐶', '🐱', '🔋', '💡', '🌸', '🎂'];
+// Auto icon: first keyword found in the item name wins
+const FOOD_ICONS = [
+  ['peanut', '🥜'], ['milk', '🥛'], ['egg', '🥚'], ['bread', '🍞'], ['bagel', '🥯'], ['tortilla', '🫓'], ['cheese', '🧀'], ['butter', '🧈'],
+  ['yogurt', '🥄'], ['cream', '🍦'], ['ice cream', '🍦'], ['apple juice', '🧃'], ['juice', '🧃'], ['apple', '🍎'],
+  ['banana', '🍌'], ['strawberr', '🍓'], ['blueberr', '🫐'], ['grape', '🍇'], ['lemon', '🍋'], ['lime', '🍋'],
+  ['orange', '🍊'], ['peach', '🍑'], ['pear', '🍐'], ['cherr', '🍒'], ['watermelon', '🍉'], ['melon', '🍈'],
+  ['pineapple', '🍍'], ['mango', '🥭'], ['avocado', '🥑'], ['tomato', '🍅'], ['carrot', '🥕'], ['broccoli', '🥦'],
+  ['lettuce', '🥬'], ['spinach', '🥬'], ['salad', '🥗'], ['cucumber', '🥒'], ['pepper', '🫑'], ['corn', '🌽'],
+  ['potato', '🥔'], ['onion', '🧅'], ['garlic', '🧄'], ['mushroom', '🍄'], ['pea', '🫛'], ['bean', '🫘'],
+  ['chicken', '🍗'], ['turkey', '🦃'], ['beef', '🥩'], ['steak', '🥩'], ['pork', '🥩'], ['bacon', '🥓'],
+  ['sausage', '🌭'], ['hot dog', '🌭'], ['ham', '🍖'], ['fish', '🐟'], ['salmon', '🐟'], ['tuna', '🐟'],
+  ['shrimp', '🦐'], ['pasta', '🍝'], ['spaghetti', '🍝'], ['noodle', '🍜'], ['rice', '🍚'], ['cereal', '🥣'],
+  ['oat', '🥣'], ['peanut', '🥜'], ['nut', '🥜'], ['cookie', '🍪'], ['chocolate', '🍫'], ['candy', '🍬'],
+  ['popcorn', '🍿'], ['chip', '🥔'], ['cracker', '🍘'], ['pretzel', '🥨'], ['pizza', '🍕'], ['coffee', '☕'],
+  ['tea', '🍵'], ['soda', '🥤'], ['water', '💧'], ['wine', '🍷'], ['beer', '🍺'], ['honey', '🍯'], ['salt', '🧂'],
+  ['oil', '🫒'], ['flour', '🌾'], ['sugar', '🍬'], ['cake', '🎂'], ['muffin', '🧁'], ['ice', '🧊'], ['frozen', '🧊'],
+  ['paper towel', '🧻'], ['toilet', '🧻'], ['tissue', '🧻'], ['napkin', '🧻'], ['soap', '🧼'], ['detergent', '🧴'],
+  ['shampoo', '🧴'], ['lotion', '🧴'], ['sponge', '🧽'], ['toothpaste', '🪥'], ['toothbrush', '🪥'],
+  ['diaper', '👶'], ['wipes', '👶'], ['baby', '👶'], ['dog', '🐶'], ['cat', '🐱'], ['batter', '🔋'],
+  ['vitamin', '💊'], ['medicine', '💊'], ['bandage', '🩹'], ['flower', '🌸'], ['trash bag', '🗑️'], ['foil', '🧻'],
+];
+const guessEmoji = (name) => {
+  const n = ' ' + name.toLowerCase();
+  const hit = FOOD_ICONS.find(([k]) => n.includes(' ' + k)); // match at the start of a word
+  return hit ? hit[1] : '🛒';
+};
+const EVENT_EMOJIS =['🎉', '🎂', '🎄', '🦃', '🏖️', '✈️', '🏰', '🎃', '🐣', '🎓', '⚽', '💍', '👶', '🏡', '🎁', '⛪'];
 
 // ------------------------------------------------------------------ helpers
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -85,8 +119,11 @@ const avatar = (m, size = '') => m
 
 // ------------------------------------------------------------------ data
 async function loadAll() {
-  const results = await Promise.all(TABLES.map((t) => S.api.select(t)));
+  // A table that isn't set up yet (e.g. update SQL not run) just comes back empty
+  const results = await Promise.all(TABLES.map((t) => S.api.select(t).catch((e) => { console.warn(t, e.message); return []; })));
   TABLES.forEach((t, i) => { S.data[t] = results[i] || []; });
+  const missing = S.data.catalog.map((c) => c.photo_path).filter((p) => p && !S.photoUrls[p]);
+  if (missing.length) Object.assign(S.photoUrls, await S.api.photoUrls(missing).catch(() => ({})));
 }
 
 let reloadTimer;
@@ -129,6 +166,11 @@ function render() {
     ['countdowns', '⏳', 'Countdowns'],
     ['family', '🏡', 'Family'],
   ];
+  // keep anything being typed if a live update re-draws the screen
+  const keep = ['#add-item input', '#post-form textarea', '#lib-search'].map((sel) => {
+    const el = document.querySelector(sel);
+    return el && { sel, value: el.value, focused: document.activeElement === el };
+  }).filter(Boolean);
   const body = { lists: viewLists, board: viewBoard, countdowns: viewCountdowns, family: viewFamily }[S.tab] || viewLists;
   $app.innerHTML = `
     <header class="topbar">
@@ -140,6 +182,12 @@ function render() {
     <nav class="tabbar">
       ${tabs.map(([k, i, l]) => `<button data-act="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}"><span>${i}</span>${l}</button>`).join('')}
     </nav>`;
+  for (const k of keep) {
+    const el = document.querySelector(k.sel);
+    if (!el) continue;
+    if (k.value && !el.value) el.value = k.value;
+    if (k.focused) { el.focus(); if (k.sel === '#add-item input') renderSuggestions(); }
+  }
   const focusAdd = $app.querySelector('[data-autofocus]');
   if (focusAdd && S.refocus) { focusAdd.focus(); S.refocus = false; }
 }
@@ -197,6 +245,68 @@ function renderOnboarding() {
     </div>`;
 }
 
+// ---- grocery library helpers
+const sortedStores = () => [...S.data.stores].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
+const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+const currentStore = () => {
+  const stores = sortedStores();
+  if (S.storeId === 'any') return null;
+  return stores.find((s) => s.id === S.storeId) || stores[0] || null;
+};
+const locationOf = (catalogId, storeId) =>
+  S.data.catalog_locations.find((l) => l.catalog_id === catalogId && l.store_id === storeId)?.section || '';
+const sectionsForStore = (store) => {
+  const used = S.data.catalog_locations.filter((l) => l.store_id === store.id).map((l) => l.section);
+  const seen = new Set();
+  return [...(store.section_order || []), ...used.sort(natural)].filter((x) => {
+    const k = x.trim().toLowerCase(); if (!k || seen.has(k)) return false; seen.add(k); return true;
+  });
+};
+const sectionRank = (store, section) => {
+  const i = (store.section_order || []).findIndex((x) => x.trim().toLowerCase() === section.trim().toLowerCase());
+  return i === -1 ? 9999 : i;
+};
+const thumb = (c, size = '') => {
+  const url = c?.photo_path && S.photoUrls[c.photo_path];
+  return url
+    ? `<span class="thumb ${size}"><img src="${esc(url)}" alt="" loading="lazy"></span>`
+    : `<span class="thumb ${size}">${esc(c?.emoji || '🛒')}</span>`;
+};
+
+function suggestionsFor(query, list) {
+  const q = query.trim().toLowerCase();
+  const onList = new Set(S.data.list_items.filter((i) => i.list_id === list.id && !i.done).map((i) => i.catalog_id));
+  let pool = S.data.catalog;
+  if (q) {
+    pool = pool.filter((c) => c.name.toLowerCase().includes(q));
+    pool.sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q)) || b.use_count - a.use_count);
+  } else {
+    pool = pool.filter((c) => !onList.has(c.id)).sort((a, b) => b.use_count - a.use_count);
+  }
+  return pool.slice(0, 7).map((c) => ({ c, onList: onList.has(c.id) }));
+}
+
+function renderSuggestions() {
+  const box = document.getElementById('suggest');
+  const input = document.querySelector('#add-item input');
+  const list = currentList();
+  if (!box || !input || list?.kind !== 'shopping') return;
+  const q = input.value;
+  const store = currentStore();
+  const sugg = suggestionsFor(q, list);
+  const exact = S.data.catalog.some((c) => c.name.trim().toLowerCase() === q.trim().toLowerCase());
+  if (!sugg.length && !q.trim()) { box.hidden = true; return; }
+  box.innerHTML = `
+    ${!q.trim() ? '<div class="suggest-title">Frequently bought</div>' : ''}
+    ${sugg.map(({ c, onList }) => `
+      <button type="button" class="sugg ${onList ? 'on-list' : ''}" data-act="sugg-add" data-id="${c.id}">
+        ${thumb(c, 'sm')}<span class="sugg-name">${esc(c.name)}</span>
+        <small>${onList ? '✓ on list' : esc(store ? locationOf(c.id, store.id) : '')}</small>
+      </button>`).join('')}
+    ${q.trim() && !exact ? `<button type="button" class="sugg new" data-act="sugg-new"><span class="thumb sm">${esc(guessEmoji(q))}</span><span class="sugg-name">Add “${esc(q.trim())}”</span><small>new</small></button>` : ''}`;
+  box.hidden = false;
+}
+
 // ---------------- lists
 function currentList() {
   const lists = sortedLists();
@@ -208,6 +318,9 @@ function viewLists() {
   const list = currentList();
   if (!list) return `<div class="empty">No lists yet.<br><button class="btn primary" data-act="list-new">Create a list</button></div>`;
   S.listId = list.id;
+  if (list.kind === 'shopping' && S.listView === 'library') return viewLibrary(list);
+  const shopping = list.kind === 'shopping';
+  const store = shopping ? currentStore() : null;
   const items = S.data.list_items.filter((i) => i.list_id === list.id);
   const open = items.filter((i) => !i.done).sort((a, b) => {
     if (list.kind === 'reminders' || a.due_at || b.due_at) {
@@ -217,8 +330,30 @@ function viewLists() {
     return a.created_at.localeCompare(b.created_at);
   });
   const done = items.filter((i) => i.done).sort((a, b) => (b.done_at || '').localeCompare(a.done_at || ''));
-  const placeholder = list.kind === 'shopping' ? 'Add an item…' : list.kind === 'reminders' ? 'Add a reminder…' : 'Add a to-do…';
+  const placeholder = shopping ? 'Add an item…' : list.kind === 'reminders' ? 'Add a reminder…' : 'Add a to-do…';
 
+  // Group by section for the chosen store; unsorted items go last
+  let openHtml;
+  if (store && open.length) {
+    const groups = new Map();
+    for (const i of open) {
+      const sec = i.catalog_id ? locationOf(i.catalog_id, store.id) : '';
+      const key = sec.trim() || '';
+      if (!groups.has(key.toLowerCase())) groups.set(key.toLowerCase(), { name: key, items: [] });
+      groups.get(key.toLowerCase()).items.push(i);
+    }
+    const ordered = [...groups.values()].sort((a, b) => {
+      if (!a.name) return 1; if (!b.name) return -1;
+      return sectionRank(store, a.name) - sectionRank(store, b.name) || natural(a.name, b.name);
+    });
+    openHtml = ordered.map((g) => `
+      <li class="group-head">${g.name ? esc(g.name) : 'Not sorted yet'}<span>${g.items.length}</span></li>
+      ${g.items.map((i) => itemRow(i, store, true)).join('')}`).join('');
+  } else {
+    openHtml = open.map((i) => itemRow(i, store, false)).join('');
+  }
+
+  const stores = sortedStores();
   return `
     <div class="chips">
       ${lists.map((l) => {
@@ -229,41 +364,93 @@ function viewLists() {
     </div>
     <div class="list-head">
       <h2>${esc(list.emoji)} ${esc(list.name)}</h2>
-      <button class="icon-btn" data-act="list-edit" data-id="${list.id}" aria-label="List settings">⋯</button>
+      <div class="row">
+        ${shopping ? '<button class="btn small-btn" data-act="lib-open">📚 Library</button>' : ''}
+        <button class="icon-btn" data-act="list-edit" data-id="${list.id}" aria-label="List settings">⋯</button>
+      </div>
     </div>
+    ${shopping ? `
+    <div class="store-bar">
+      <span class="muted">Shopping at</span>
+      ${stores.map((s) => `<button class="pill ${store?.id === s.id ? 'on' : ''}" data-act="store-pick" data-id="${s.id}">${esc(s.emoji)} ${esc(s.name)}</button>`).join('')}
+      ${stores.length ? `<button class="pill ${!store ? 'on' : ''}" data-act="store-pick" data-id="any">Any</button>` : ''}
+      <button class="pill add" data-act="store-new">${stores.length ? '＋' : '＋ Add your stores'}</button>
+    </div>` : ''}
     <form id="add-item" class="add-bar">
-      <input name="text" placeholder="${placeholder}" autocomplete="off" enterkeyhint="done" data-autofocus>
+      <div class="add-wrap">
+        <input name="text" placeholder="${placeholder}" autocomplete="off" enterkeyhint="done" data-autofocus>
+        ${shopping ? '<div id="suggest" class="suggest" hidden></div>' : ''}
+      </div>
       <button class="btn primary round" type="submit" aria-label="Add">＋</button>
     </form>
     <ul class="items">
-      ${open.map(itemRow).join('') || `<li class="empty small">All clear! 🎉</li>`}
+      ${openHtml || `<li class="empty small">All clear! 🎉</li>`}
     </ul>
     ${done.length ? `
       <div class="done-head">
         <button class="link" data-act="toggle-done">${S.showDone ? '▾' : '▸'} Done (${done.length})</button>
         <button class="link danger" data-act="clear-done">Clear</button>
       </div>
-      ${S.showDone ? `<ul class="items done">${done.map(itemRow).join('')}</ul>` : ''}` : ''}`;
+      ${S.showDone ? `<ul class="items done">${done.map((i) => itemRow(i, store, false)).join('')}</ul>` : ''}` : ''}`;
 }
 
-function itemRow(i) {
+function itemRow(i, store = null, grouped = false) {
   const who = byId('members', i.assigned_to);
   const overdue = !i.done && i.due_at && new Date(i.due_at) < new Date();
   const doneBy = i.done ? byId('members', i.done_by) : null;
+  const c = i.catalog_id ? byId('catalog', i.catalog_id) : null;
+  const sec = c && store && !grouped ? locationOf(c.id, store.id) : '';
   const meta = [
+    sec ? `<span class="sec-tag">📍 ${esc(sec)}</span>` : '',
     i.due_at ? `<span class="due ${overdue ? 'overdue' : ''}">⏰ ${esc(dueLabel(i.due_at))}</span>` : '',
     i.note ? `<span class="note-ico">📄 ${esc(i.note.length > 40 ? i.note.slice(0, 40) + '…' : i.note)}</span>` : '',
     doneBy ? `<span>✓ ${esc(doneBy.name)}</span>` : '',
   ].filter(Boolean).join('');
+  const isShop = currentList()?.kind === 'shopping';
   return `
     <li class="item ${i.done ? 'is-done' : ''}">
       <button class="check" data-act="item-toggle" data-id="${i.id}" aria-label="${i.done ? 'Mark not done' : 'Mark done'}">${i.done ? '✓' : ''}</button>
-      <button class="item-body" data-act="item-edit" data-id="${i.id}">
-        <span class="item-text">${esc(i.text)}</span>
-        ${meta ? `<span class="meta">${meta}</span>` : ''}
+      <button class="item-body ${isShop ? 'with-thumb' : ''}" data-act="item-edit" data-id="${i.id}">
+        ${isShop ? thumb(c || { emoji: guessEmoji(i.text) }) : ''}
+        <span class="item-main">
+          <span class="item-text">${esc(i.text)}</span>
+          ${meta ? `<span class="meta">${meta}</span>` : ''}
+        </span>
       </button>
       ${avatar(who)}
     </li>`;
+}
+
+// ---------------- library (all remembered grocery items)
+function viewLibrary(list) {
+  const q = S.libQuery.trim().toLowerCase();
+  const store = currentStore();
+  const onList = new Set(S.data.list_items.filter((i) => i.list_id === list.id && !i.done).map((i) => i.catalog_id));
+  const items = S.data.catalog.filter((c) => !q || c.name.toLowerCase().includes(q)).sort((a, b) => natural(a.name, b.name));
+  return `
+    <div class="list-head">
+      <button class="link" data-act="lib-close">‹ Back to ${esc(list.name)}</button>
+      <button class="btn small-btn" data-act="lib-new">＋ New item</button>
+    </div>
+    <h2>📚 Grocery library <small class="muted">(${S.data.catalog.length})</small></h2>
+    <input id="lib-search" class="search" placeholder="Search the library…" value="${esc(S.libQuery)}" autocomplete="off">
+    <ul class="items">
+      ${items.map((c) => {
+        const locs = S.data.catalog_locations.filter((l) => l.catalog_id === c.id)
+          .map((l) => `${byId('stores', l.store_id)?.name || ''}: ${l.section}`).join(' · ');
+        return `
+        <li class="item">
+          <button class="item-body with-thumb" data-act="lib-edit" data-id="${c.id}">
+            ${thumb(c)}
+            <span class="item-main"><span class="item-text">${esc(c.name)}</span>
+              <span class="meta">${locs ? `<span>📍 ${esc(locs)}</span>` : ''}${c.notes ? `<span>📄 ${esc(c.notes.slice(0, 40))}</span>` : ''}</span></span>
+          </button>
+          ${onList.has(c.id)
+            ? '<span class="on-list-tag">✓ On list</span>'
+            : `<button class="btn small-btn" data-act="lib-add" data-id="${c.id}">＋ Add</button>`}
+        </li>`;
+      }).join('') || `<li class="empty small">${q ? 'No matches.' : 'Your library fills up automatically as you add groceries.'}</li>`}
+    </ul>`;
 }
 
 // ---------------- board
@@ -335,27 +522,35 @@ function viewFamily() {
     <div class="card list-card">${parents.map(row).join('')}</div>
     <div class="row between"><h3 class="section">Kids</h3><button class="link" data-act="kid-new">＋ Add kid</button></div>
     <div class="card list-card">${kids.map(row).join('') || '<div class="empty small">No kids added.</div>'}</div>
+    <div class="row between"><h3 class="section">Stores</h3><button class="link" data-act="store-new">＋ Add store</button></div>
+    <div class="card list-card">${sortedStores().map((st) => `
+      <button class="member" data-act="store-edit" data-id="${st.id}">
+        <span class="avatar lg" style="--c:#ddd">${esc(st.emoji)}</span><span><strong>${esc(st.name)}</strong><small>${sectionsForStore(st).length} sections</small></span><span class="chev">›</span>
+      </button>`).join('') || '<div class="empty small">Add the stores you shop at to save where items are.</div>'}</div>
     <section class="card stack">
       <small class="muted">Signed in as ${esc(S.user.email)}</small>
       <button class="btn ghost" data-act="signout">Sign out</button>
     </section>
-    <p class="muted center small">Homebase · Phase 1 — Lists, Board, Countdowns</p>`;
+    <p class="muted center small">Homebase · Phase 1 — Lists, Grocery library, Board, Countdowns</p>`;
 }
 
 // ------------------------------------------------------------------ sheets (bottom modals)
-function openSheet(html, onSubmit) {
+function openSheet(html, onSubmit, onCancel) {
+  S.sheetCancel = onCancel || null;
   $sheet.innerHTML = `<div class="backdrop" data-act="sheet-close"></div><form class="sheet" id="sheet-form">${html}</form>`;
   requestAnimationFrame(() => $sheet.classList.add('open'));
   const form = $sheet.querySelector('#sheet-form');
   form.onsubmit = async (e) => {
     e.preventDefault();
     const ok = await onSubmit?.(new FormData(form), e.submitter?.value);
-    if (ok !== false) closeSheet();
+    if (ok !== false) { S.sheetCancel = null; closeSheet(); }
   };
   const first = form.querySelector('[data-focus]');
   if (first) setTimeout(() => first.focus(), 250);
 }
-function closeSheet() { $sheet.classList.remove('open'); setTimeout(() => { $sheet.innerHTML = ''; }, 200); }
+function closeSheet() {
+  S.sheetCancel?.(); S.sheetCancel = null;
+  $sheet.classList.remove('open'); setTimeout(() => { $sheet.innerHTML = ''; }, 200); }
 
 const pickerRow = (name, options, current, kind = 'emoji') => `
   <div class="picker" data-picker="${name}">
@@ -479,8 +674,185 @@ function sheetNote(n) {
   });
 }
 
+// ---------------- grocery item sheet (library details + this trip)
+async function resizeImage(file, max = 900) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  return new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.82));
+}
+
+function sheetGrocery(item, c) {
+  const isNew = !c;
+  c = c || { name: S.libQuery || '', emoji: '🛒', notes: '', photo_path: null };
+  const stores = sortedStores();
+  const originalPhoto = c.photo_path;
+  let uploaded = null; // photo uploaded during this edit (deleted again if cancelled)
+  const photoHtml = (path, emoji) => {
+    const url = path && S.photoUrls[path];
+    return url ? `<img src="${esc(url)}" alt="">` : `<span class="big-emoji">${esc(emoji)}</span>`;
+  };
+  openSheet(`
+    <div class="photo-box" id="photo-box">${photoHtml(c.photo_path, c.emoji)}</div>
+    <input type="hidden" name="photo_path" value="${esc(c.photo_path || '')}">
+    <input type="file" id="photo-file" accept="image/*" hidden>
+    <div class="row center-row">
+      <button type="button" class="btn" data-act="photo-pick">📷 ${c.photo_path ? 'Change photo' : 'Add photo'}</button>
+      <button type="button" class="btn ghost" data-act="photo-remove" ${c.photo_path ? '' : 'hidden'}>Remove</button>
+    </div>
+    <label>Item<input name="name" value="${esc(c.name)}" required ${isNew ? 'data-focus' : ''}></label>
+    <details class="icon-details"><summary>Icon: <span class="cur-emoji">${esc(c.emoji)}</span> <small class="muted">(shown when there's no photo)</small></summary>
+      ${pickerRow('emoji', GROCERY_EMOJIS.includes(c.emoji) ? GROCERY_EMOJIS : [c.emoji, ...GROCERY_EMOJIS], c.emoji)}
+    </details>
+    <fieldset class="stack-sm"><legend>📍 Where to find it</legend>
+      ${stores.length ? stores.map((s) => `
+        <div class="loc-row"><span>${esc(s.emoji)} ${esc(s.name)}</span>
+          <input name="loc_${s.id}" value="${esc(c.id ? locationOf(c.id, s.id) : '')}" placeholder="e.g. Aisle 7, Produce" list="secs_${s.id}" autocomplete="off">
+          <datalist id="secs_${s.id}">${sectionsForStore(s).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
+        </div>`).join('') : '<small class="muted">Add your stores (Family tab, or “Add your stores” on the grocery list) to save aisles.</small>'}
+    </fieldset>
+    <label>Notes <small class="muted">— brand, size, where it is…</small><textarea name="notes" rows="2" placeholder="e.g. Top shelf next to the oatmeal">${esc(c.notes || '')}</textarea></label>
+    ${item ? `
+      <hr>
+      <label>Note for this trip<input name="trip_note" value="${esc(item.note || '')}" placeholder="e.g. 2 gallons"></label>
+      <label>For<span></span></label>${memberPicker(item.assigned_to)}` : ''}
+    <div class="row between">
+      ${item ? '<button class="btn danger ghost" type="submit" value="delete" formnovalidate>Remove from list</button>'
+        : isNew ? '<span></span>' : '<button class="btn danger ghost" type="submit" value="delete" formnovalidate>Delete from library</button>'}
+      <div class="row"><button class="btn ghost" type="button" data-act="sheet-close">Cancel</button><button class="btn primary" type="submit" value="save">Save</button></div>
+    </div>`, async (f, action) => {
+    if (action === 'delete') {
+      if (item) return run(() => S.api.remove('list_items', item.id), 'Removed from list');
+      if (!confirm(`Delete "${c.name}" from the library?`)) return false;
+      await run(() => S.api.remove('catalog', c.id), 'Deleted');
+      if (c.photo_path) S.api.deletePhoto(c.photo_path).catch(() => {});
+      return;
+    }
+    const name = f.get('name').trim();
+    const row = { name, emoji: f.get('emoji') || c.emoji, notes: f.get('notes').trim() || null, photo_path: f.get('photo_path') || null };
+    let cid = c.id;
+    try {
+      if (isNew) cid = (await S.api.insert('catalog', { ...row, household_id: household().id })).id;
+      else await S.api.update('catalog', cid, row);
+    } catch (e) {
+      toast(/duplicate|unique/i.test(e.message) ? `“${name}” is already in the library` : e.message);
+      return false;
+    }
+    for (const s of stores) {
+      const val = (f.get(`loc_${s.id}`) || '').trim();
+      const existing = S.data.catalog_locations.find((l) => l.catalog_id === cid && l.store_id === s.id);
+      if (existing && !val) await run(() => S.api.remove('catalog_locations', existing.id));
+      else if (existing && val !== existing.section) await run(() => S.api.update('catalog_locations', existing.id, { section: val }));
+      else if (!existing && val) await run(() => S.api.insert('catalog_locations', { household_id: household().id, catalog_id: cid, store_id: s.id, section: val }));
+    }
+    if (originalPhoto && originalPhoto !== row.photo_path) S.api.deletePhoto(originalPhoto).catch(() => {});
+    uploaded = null;
+    if (item) {
+      await run(() => S.api.update('list_items', item.id, {
+        text: name, note: f.get('trip_note').trim() || null, assigned_to: f.get('assigned_to') || null,
+      }));
+    }
+    toast('Saved');
+  }, () => { if (uploaded) S.api.deletePhoto(uploaded).catch(() => {}); });
+
+  const form = $sheet.querySelector('#sheet-form');
+  const fileInput = form.querySelector('#photo-file');
+  const pathInput = form.querySelector('[name=photo_path]');
+  const box = form.querySelector('#photo-box');
+  const removeBtn = form.querySelector('[data-act=photo-remove]');
+  form.querySelector('[data-act=photo-pick]').onclick = () => fileInput.click();
+  removeBtn.onclick = () => {
+    pathInput.value = ''; removeBtn.hidden = true;
+    box.innerHTML = photoHtml(null, form.querySelector('[name=emoji]').value);
+  };
+  form.querySelector('[data-picker=emoji]').addEventListener('click', () => setTimeout(() => {
+    const e = form.querySelector('[name=emoji]').value;
+    form.querySelector('.cur-emoji').textContent = e;
+    if (!pathInput.value) box.innerHTML = photoHtml(null, e);
+  }));
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0]; if (!file) return;
+    box.innerHTML = '<span class="muted">Uploading…</span>';
+    const path = await run(async () => S.api.uploadPhoto(household().id, await resizeImage(file)));
+    if (!path) { box.innerHTML = photoHtml(pathInput.value, c.emoji); return; }
+    if (uploaded) S.api.deletePhoto(uploaded).catch(() => {});
+    uploaded = path;
+    Object.assign(S.photoUrls, await S.api.photoUrls([path]));
+    pathInput.value = path; removeBtn.hidden = false;
+    form.querySelector('[data-act=photo-pick]').textContent = '📷 Change photo';
+    box.innerHTML = photoHtml(path, c.emoji);
+  };
+}
+
+// ---------------- store sheet (name + walking order of sections)
+function sheetStore(st) {
+  const isNew = !st;
+  st = st || { name: '', emoji: '🏪', section_order: [] };
+  S.secEdit = isNew ? [] : sectionsForStore(st);
+  openSheet(`
+    <h2>${isNew ? 'Add a store' : `${esc(st.name)}`}</h2>
+    <label>Store name<input name="name" value="${esc(st.name)}" placeholder="Publix, Costco, Target…" required ${isNew ? 'data-focus' : ''}></label>
+    <label>Icon<span></span></label>${pickerRow('emoji', STORE_EMOJIS.includes(st.emoji) ? STORE_EMOJIS : [st.emoji, ...STORE_EMOJIS], st.emoji)}
+    <fieldset class="stack-sm"><legend>Sections, in the order you walk the store</legend>
+      <ul id="sec-list" class="sec-list"></ul>
+      <div class="row"><input id="sec-new" placeholder="Add a section (e.g. Produce, Aisle 5)" autocomplete="off"><button type="button" class="btn" data-act="sec-add">Add</button></div>
+      <small class="muted">The grocery list groups items in this order. Sections you type on items show up here automatically.</small>
+    </fieldset>
+    <div class="row between">
+      ${isNew ? '<span></span>' : '<button class="btn danger ghost" type="submit" value="delete" formnovalidate>Delete store</button>'}
+      <div class="row"><button class="btn ghost" type="button" data-act="sheet-close">Cancel</button><button class="btn primary" type="submit" value="save">Save</button></div>
+    </div>`, async (f, action) => {
+    if (action === 'delete') {
+      if (!confirm(`Delete ${st.name}? Aisle info saved for this store will be removed.`)) return false;
+      if (S.storeId === st.id) S.storeId = null;
+      return run(() => S.api.remove('stores', st.id), 'Store deleted');
+    }
+    const row = { name: f.get('name').trim(), emoji: f.get('emoji'), section_order: S.secEdit };
+    if (isNew) {
+      const created = await run(() => S.api.insert('stores', { ...row, household_id: household().id, sort: S.data.stores.length }));
+      if (created) { S.storeId = created.id; localStorage.setItem('hb.store', created.id); }
+    } else await run(() => S.api.update('stores', st.id, row));
+  });
+  renderSecList();
+  $sheet.querySelector('#sec-new').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addSection(); }
+  });
+}
+function renderSecList() {
+  const ul = $sheet.querySelector('#sec-list'); if (!ul) return;
+  ul.innerHTML = S.secEdit.map((s, i) => `
+    <li><span class="sec-num">${i + 1}</span><span class="sec-name">${esc(s)}</span>
+      <button type="button" class="icon-btn" data-act="sec-move" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+      <button type="button" class="icon-btn" data-act="sec-move" data-i="${i}" data-d="1" ${i === S.secEdit.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+      <button type="button" class="icon-btn" data-act="sec-del" data-i="${i}" aria-label="Remove">✕</button></li>`).join('')
+    || '<li class="muted small">No sections yet.</li>';
+}
+function addSection() {
+  const input = $sheet.querySelector('#sec-new');
+  const v = input.value.trim();
+  if (v && !S.secEdit.some((x) => x.toLowerCase() === v.toLowerCase())) S.secEdit.push(v);
+  input.value = ''; input.focus(); renderSecList();
+}
+
+// add a remembered item to the current grocery list
+async function addFromCatalog(c) {
+  const list = currentList();
+  if (S.data.list_items.some((i) => i.list_id === list.id && !i.done && i.catalog_id === c.id)) {
+    toast(`${c.name} is already on the list`); return;
+  }
+  S.data.list_items.push({ id: 'tmp-' + Date.now(), list_id: list.id, text: c.name, catalog_id: c.id, done: false, created_at: new Date().toISOString() });
+  render();
+  await run(() => S.api.rpc('remember_item', { p_name: c.name, p_emoji: c.emoji }));
+  await run(() => S.api.insert('list_items', { household_id: household().id, list_id: list.id, text: c.name, catalog_id: c.id, created_by: me().id }));
+  scheduleReload();
+}
+
 // ------------------------------------------------------------------ events
 document.addEventListener('click', async (e) => {
+  const box = document.getElementById('suggest');
+  if (box && !box.hidden && !e.target.closest('.add-wrap')) box.hidden = true;
   const pick = e.target.closest('[data-pick]');
   if (pick) {
     const wrap = pick.closest('[data-picker]');
@@ -502,7 +874,7 @@ document.addEventListener('click', async (e) => {
     }
     case 'onboard-mode': S.onboardMode = el.dataset.mode; render(); break;
     case 'signout': await run(() => S.api.signOut()); break;
-    case 'list-pick': S.listId = id; localStorage.setItem('hb.list', id); S.showDone = false; render(); break;
+    case 'list-pick': S.listId = id; localStorage.setItem('hb.list', id); S.showDone = false; S.listView = 'list'; render(); break;
     case 'list-new': sheetList(null); break;
     case 'list-edit': sheetList(byId('lists', id)); break;
     case 'item-toggle': {
@@ -514,7 +886,37 @@ document.addEventListener('click', async (e) => {
       await run(() => S.api.update('list_items', id, { done: i.done, done_at: i.done_at, done_by: i.done_by }));
       break;
     }
-    case 'item-edit': sheetItem(byId('list_items', id)); break;
+    case 'item-edit': {
+      const item = byId('list_items', id);
+      if (!item || id.startsWith('tmp-')) break;
+      if (currentList()?.kind !== 'shopping') { sheetItem(item); break; }
+      let c = item.catalog_id && byId('catalog', item.catalog_id);
+      if (!c) { // older item not in the library yet: remember it first
+        const cid = await run(() => S.api.rpc('remember_item', { p_name: item.text, p_emoji: guessEmoji(item.text) }));
+        if (!cid) break;
+        await run(() => S.api.update('list_items', item.id, { catalog_id: cid }));
+        await run(loadAll);
+        c = byId('catalog', cid);
+      }
+      sheetGrocery(byId('list_items', id), c);
+      break;
+    }
+    case 'sugg-add': await addFromCatalog(byId('catalog', id)); S.refocus = true; render(); break;
+    case 'sugg-new': document.getElementById('add-item').requestSubmit(); break;
+    case 'lib-open': S.listView = 'library'; S.libQuery = ''; render(); window.scrollTo(0, 0); break;
+    case 'lib-close': S.listView = 'list'; render(); break;
+    case 'lib-new': sheetGrocery(null, null); break;
+    case 'lib-edit': sheetGrocery(null, byId('catalog', id)); break;
+    case 'lib-add': await addFromCatalog(byId('catalog', id)); toast('Added to list'); break;
+    case 'store-pick': S.storeId = id; localStorage.setItem('hb.store', id); render(); break;
+    case 'store-new': sheetStore(null); break;
+    case 'store-edit': sheetStore(byId('stores', id)); break;
+    case 'sec-add': addSection(); break;
+    case 'sec-move': {
+      const i = +el.dataset.i, j = i + +el.dataset.d;
+      [S.secEdit[i], S.secEdit[j]] = [S.secEdit[j], S.secEdit[i]]; renderSecList(); break;
+    }
+    case 'sec-del': S.secEdit.splice(+el.dataset.i, 1); renderSecList(); break;
     case 'toggle-done': S.showDone = !S.showDone; render(); break;
     case 'clear-done': {
       const ids = S.data.list_items.filter((i) => i.list_id === S.listId && i.done).map((i) => i.id);
@@ -585,6 +987,17 @@ document.addEventListener('submit', async (e) => {
     case 'add-item': {
       const text = fd.get('text').trim();
       if (!text) return;
+      if (currentList()?.kind === 'shopping') {
+        f.reset(); S.refocus = true;
+        const known = S.data.catalog.find((c) => c.name.trim().toLowerCase() === text.toLowerCase());
+        if (known) { await addFromCatalog(known); break; }
+        const cid = await run(() => S.api.rpc('remember_item', { p_name: text, p_emoji: guessEmoji(text) }));
+        S.data.list_items.push({ id: 'tmp-' + Date.now(), list_id: S.listId, text, catalog_id: cid, done: false, created_at: new Date().toISOString() });
+        render();
+        await run(() => S.api.insert('list_items', { household_id: household().id, list_id: S.listId, text, catalog_id: cid, created_by: me().id }));
+        scheduleReload();
+        break;
+      }
       f.reset();
       const temp = { id: 'tmp-' + Date.now(), list_id: S.listId, text, done: false, created_at: new Date().toISOString() };
       S.data.list_items.push(temp); S.refocus = true; render();
@@ -609,5 +1022,25 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $sheet.innerHTML) closeSheet(); });
+
+// Grocery suggestions as you type
+document.addEventListener('input', (e) => {
+  if (e.target.matches('#add-item input')) renderSuggestions();
+  if (e.target.id === 'lib-search') {
+    S.libQuery = e.target.value;
+    const pos = e.target.selectionStart;
+    render();
+    const el = document.getElementById('lib-search'); el.focus(); el.setSelectionRange(pos, pos);
+  }
+});
+// tapping a suggestion shouldn't close the keyboard
+document.addEventListener('mousedown', (e) => { if (e.target.closest('#suggest')) e.preventDefault(); });
+document.addEventListener('focusin', (e) => { if (e.target.matches('#add-item input')) renderSuggestions(); });
+document.addEventListener('focusout', (e) => {
+  if (e.target.matches('#add-item input')) setTimeout(() => {
+    const box = document.getElementById('suggest');
+    if (box && !box.contains(document.activeElement) && document.activeElement !== e.target) box.hidden = true;
+  }, 200);
+});
 
 boot();
