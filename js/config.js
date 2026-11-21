@@ -5,5 +5,5 @@
 // Row Level Security keeps each family's data private.
 // Leave them blank to run in demo mode with sample data.
 // ------------------------------------------------------------
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://fykxnfcjrgqmtwqxtdup.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_F--tU2ElmMNndO72Wd1PQQ_RzRXgAsr';
