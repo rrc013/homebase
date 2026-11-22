@@ -86,6 +86,10 @@ export async function requestReward(kid, reward) {
 export async function setBedtimeNow(kid, on) {
   const row = { bedtime_now: on ? todayStr() : null, updated_at: new Date().toISOString() };
   const ok = await run(async () => {
+    // starting bedtime = a fresh bedtime: if one was already finished today, it can be done again
+    // (its stars are removed and earned once more at the end, so nothing is doubled)
+    const done = on && routineDone(kid, 'bedtime');
+    if (done) { await S.api.remove('completions', done.id); S.data.completions = S.data.completions.filter((x) => x.id !== done.id); }
     if (S.data.kid_profiles.some((x) => x.member_id === kid.id)) await S.api.updateWhere('kid_profiles', 'member_id', kid.id, row);
     else await S.api.insert('kid_profiles', { ...row, member_id: kid.id, household_id: household().id });
     return true;
@@ -211,7 +215,7 @@ export function kidCard(kid, { compact = false } = {}) {
       }).join('') || '<p class="muted small">No chores today.</p>'}</div>`}
       ${isParent && !compact ? `<div class="row wrap kid-actions">
         ${prof.bedtime_now === todayStr()
-          ? (routineDone(kid, 'bedtime') ? '<span class="rchip done">🌙 Bedtime done</span>' : `<button class="btn small-btn night-btn on" data-act="kid-bedtime" data-id="${kid.id}" data-on="">🌙 Bedtime started · Cancel</button>`)
+          ? (routineDone(kid, 'bedtime') ? `<button class="btn small-btn night-btn" data-act="kid-bedtime" data-id="${kid.id}" data-on="1">🌙 Start bedtime again</button>` : `<button class="btn small-btn night-btn on" data-act="kid-bedtime" data-id="${kid.id}" data-on="">🌙 Bedtime started · Cancel</button>`)
           : `<button class="btn small-btn night-btn" data-act="kid-bedtime" data-id="${kid.id}" data-on="1">🌙 Start bedtime now</button>`}
         <button class="btn small-btn" data-act="kid-bonus" data-id="${kid.id}">＋ Bonus stars</button>
         <button class="btn small-btn ghost" data-act="kids-view" data-view="activity:${kid.id}">📜 Activity</button>

@@ -1,6 +1,6 @@
 // Homebase service worker: makes the app installable and opens fast.
 // Network-first for app files (so updates show up right away), cache as fallback.
-const CACHE = 'homebase-v11';
+const CACHE = 'homebase-v14';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/core.js', 'js/db.js', 'js/config.js', 'js/calendar.js', 'js/hub.js', 'js/weather.js', 'js/photos.js', 'js/kids.js', 'js/buddy.js', 'js/pets.js', 'js/fun.js', 'js/quickadd.js', 'js/notify.js', 'js/bedtime-book.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
@@ -14,8 +14,11 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // never cache Supabase data
+  // always ask GitHub for the newest file (it says "keep for 10 min", which delays updates)
+  const fresh = e.request.mode === 'navigate' ? fetch(e.request, { cache: 'no-cache' }).catch(() => fetch(e.request))
+    : fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' });
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fresh.then((res) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(e.request, copy));
       return res;

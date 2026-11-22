@@ -69,3 +69,10 @@ export async function keepAwake(on) {
     } else if (!on && lock) { await lock.release(); lock = null; }
   } catch { lock = null; }
 }
+
+// Full screen hides Android's status bar and Chrome's address bar (needs a tap to start)
+export function goFullscreen() {
+  const el = document.documentElement;
+  if (document.fullscreenElement || !el.requestFullscreen) return;
+  el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}

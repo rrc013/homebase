@@ -6,7 +6,7 @@ import {
   sortedMembers, sortedLists, toast, run, relTime, dueLabel,
   daysUntil, toLocalInput, avatar, openSheet, closeSheet, pickerRow,
   memberPicker, resizeImage,
-  actions, hooks,
+  actions, hooks, APP_VERSION,
 } from './core.js';
 import { viewCalendar, calendarSettingsHtml, handleOAuthReturn, syncNow, isHub } from './calendar.js';
 import { loadWeather, weatherPill } from './weather.js';
@@ -14,7 +14,7 @@ import { signFamilyPhotos, photosSettingsHtml } from './photos.js';
 import { renderHub, startHubTimers } from './hub.js';
 import { viewKids, signChorePhotos, pendingApprovals } from './kids.js';
 import { renderBuddy, sheetBuddySetup } from './buddy.js';
-import { keepAwake } from './fun.js';
+import { keepAwake, goFullscreen } from './fun.js';
 import { parseQuick, quickLabel } from './quickadd.js';
 import { notificationsHtml } from './notify.js';
 
@@ -521,7 +521,7 @@ function viewFamily() {
       <small class="muted">Signed in as ${esc(S.user.email)}</small>
       <button class="btn ghost" data-act="signout">Sign out</button>
     </section>
-    <p class="muted center small">Homebase · Calendar, Lists, Board, Countdowns, Hub</p>`;
+    <p class="muted center small">Homebase · version ${APP_VERSION}</p>`;
 }
 
 function sheetItem(i) {
@@ -988,6 +988,8 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $sheet.innerHTML) closeSheet(); });
+// hub + kid's Buddy: go full screen on the first tap (hides the phone's status bar and the browser bar)
+document.addEventListener('pointerdown', () => { if (S.mode === 'buddy' || S.mode === 'hub') goFullscreen(); });
 
 Object.assign(actions, {
   'board-view': (el) => { S.boardView = el.dataset.v; render(); },

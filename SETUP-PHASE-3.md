@@ -34,7 +34,7 @@ Allow about 20 minutes. Nothing changes in Google Cloud or the server function t
 2. Chrome menu **⋮** → **Add to Home screen**, then open Homebase from the home-screen icon. This makes it full-screen.
 3. Go to **Family** → **This device** → **🧒 Kid's Buddy**. Choose **Harper** and set a **grown-up PIN** (4+ digits).
 4. The tablet is now Harper's Buddy. The first time, she picks her pet.
-5. **To get back out:** press and hold the **top-left corner** for 2 seconds and enter your PIN. That menu also lets you:
+5. **To get back out:** press and hold the faint **🔒 in the bottom-right corner** (or the clock) for 2 seconds and enter your PIN. That menu also lets you:
    - **preview** each screen (wake, day, bedtime, sleep) to show Harper how it works
    - restart today's routines
    - exit Buddy mode

@@ -678,3 +678,8 @@ body.buddy-night .bk-stars { color: #4A4D6E; }
 .night-btn.on { background: #FFE7B0; color: #2A2D5C; }
 /* the grown-up corner must stay reachable on the sleep / wake / pop-up screens too */
 .buddy-secret { position: fixed; z-index: 60; }
+/* grown-up button: bottom-right corner, faint lock so parents can find it */
+.buddy-secret { top: auto; left: auto; right: 0; bottom: 0; width: 84px; height: 84px; display: grid; place-items: center; background: none; border: 0; -webkit-touch-callout: none; }
+.buddy-secret span { font-size: 1.3rem; opacity: .22; pointer-events: none; }
+.b-clock { padding-left: 0; }
+.b-clock, .b-sleep-clock { -webkit-touch-callout: none; user-select: none; }

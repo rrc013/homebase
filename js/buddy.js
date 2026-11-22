@@ -38,7 +38,19 @@ export function renderBuddy() {
   document.body.classList.add('buddy-mode');
   keepAwake(true);
   if (!k) { $app.innerHTML = '<div class="buddy"><p class="center">Add a kid on the Family tab first.</p></div>'; return; }
-  const ph = phase(k);
+  let ph = phase(k);
+  const prof = profileOf(k);
+  // "Start bedtime now" was just tapped (here or on a parent's phone): open the flip book at the cover
+  if (prof.bedtime_now === todayStr() && ph === 'bedtime') {
+    const token = `${k.id}:${prof.updated_at}`;
+    if (localStorage.getItem('hb.bedNowOpened') !== token) {
+      localStorage.setItem('hb.bedNowOpened', token);
+      localStorage.removeItem(routineKey(k, 'bedtime')); localStorage.removeItem(pageKey(k, 'bedtime'));
+      Object.assign(S.buddy, { screen: 'routine', kind: 'bedtime', confirm: null, preview: null, lastSpoken: null });
+    }
+  }
+  // bedtime was cancelled while the routine was open: back to the day screen
+  if (S.buddy.screen === 'routine' && S.buddy.kind === 'bedtime' && ph === 'day' && !S.buddy.preview) S.buddy.screen = null;
   document.body.classList.toggle('buddy-night', ph === 'bedtime' || ph === 'sleep' || (S.buddy.screen === 'routine' && S.buddy.kind === 'bedtime'));
   let body;
   if (!profileOf(k).pet_kind && S.buddy.hadPet) {
@@ -56,15 +68,15 @@ export function renderBuddy() {
   else if (ph === 'bedtime') body = bedtimeScreen(k);
   else body = dayScreen(k);
   $app.innerHTML = `<div class="buddy phase-${ph}">
-    <button class="buddy-secret" aria-label="Grown-ups" data-hold="parent"></button>
-    ${S.api.demo ? '<div class="demo-banner">Demo mode — hold the top-left corner for 2 seconds for the grown-up menu (PIN 1234)</div>' : ''}
+    <button class="buddy-secret" aria-label="Grown-ups" data-hold="parent"><span>🔒</span></button>
+    ${S.api.demo ? '<div class="demo-banner">Demo mode — hold the 🔒 in the bottom-right corner (or the clock) for 2 seconds for the grown-up menu (PIN 1234)</div>' : ''}
     ${body}${S.buddy.confirm ? confirmOverlay(k) : ''}</div>`;
 }
 
 function topBar(k, { stars = true } = {}) {
   const avail = balance(k) + pendingRedeem(k).reduce((s, x) => s + x.points, 0);
   return `<div class="b-top">
-    <div class="b-clock" data-bclock>${clock()}</div>
+    <div class="b-clock" data-bclock data-hold="parent">${clock()}</div>
     ${stars ? `<button class="b-stars" data-act="b-prizes">⭐ <b>${avail}</b></button>` : ''}
   </div>`;
 }
@@ -231,7 +243,7 @@ function sleepScreen(k) {
   return `
     <button class="b-sleep" data-act="b-sleep-tap">
       <span class="b-moon dim">🌙</span>
-      <span class="b-sleep-clock" data-bclock>${clock()}</span>
+      <span class="b-sleep-clock" data-bclock data-hold="parent">${clock()}</span>
       <span class="b-sleep-pet">${esc(petOf(prof.pet_kind)?.emoji || '')}💤</span>
       <span class="b-sleep-msg" id="sleep-msg"></span>
     </button>`;
@@ -295,7 +307,7 @@ function parentGate() {
   openSheet(`
     <h2>Grown-up menu</h2>
     <div class="stack-sm">
-      ${profileOf(kid()).bedtime_now === todayStr()
+      ${profileOf(kid()).bedtime_now === todayStr() && !routineDone(kid(), 'bedtime')
         ? '<button type="button" class="btn" data-act="bp-bedtime" data-on="">↩︎ Cancel early bedtime</button>'
         : '<button type="button" class="btn primary" data-act="bp-bedtime" data-on="1">🌙 Start bedtime now</button>'}
       <button type="button" class="btn" data-act="bp-preview" data-p="">🕒 Normal (follow the clock)</button>
@@ -464,7 +476,7 @@ function afterStars(k, points) {
 export function sheetBuddySetup() {
   openSheet(`
     <h2>🧒 Make this a kid's Buddy</h2>
-    <p class="muted small">This screen becomes the kid's own: pet, picture jobs, prizes and routines. To get back out, hold the top-left corner for 2 seconds and enter your PIN.</p>
+    <p class="muted small">This screen becomes the kid's own: pet, picture jobs, prizes and routines. To get back out, hold the faint 🔒 in the bottom-right corner (or the clock) for 2 seconds and enter your PIN.</p>
     <label>Whose Buddy?<select name="kid">${kids().map((k) => `<option value="${k.id}">${esc(k.emoji)} ${esc(k.name)}</option>`).join('')}</select></label>
     <label>Grown-up PIN (4+ digits)<input name="pin" inputmode="numeric" pattern="[0-9]{4,8}" required placeholder="e.g. 2580" value="${esc(localStorage.getItem('hb.pin') || '')}"></label>
     <div class="row between"><span></span>
