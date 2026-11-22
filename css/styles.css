@@ -627,3 +627,54 @@ h3.section.warn { color: var(--danger); }
 .saver-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 /* photo-frame thumbnails in settings show the whole picture too */
 .pg-item img { object-fit: contain; background: #EFE9E1; }
+
+/* ---------- Bedtime Routine Flip Book pages (Buddy) ---------- */
+.bk-page { width: min(760px, 100%); margin: 0 auto; background: #FFFDF8; color: #1F2A44; border-radius: 34px; padding: 30px 28px;
+  display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; box-shadow: 0 8px 26px rgba(40,40,80,.18);
+  font-family: Andika, 'Comic Sans MS', Nunito, sans-serif; position: relative; }
+.bk-art { width: min(300px, 60vw); aspect-ratio: 1; border-radius: 40px; display: grid; place-items: center; padding: 22px; box-sizing: border-box; flex: none; }
+.bk-art svg { width: 100%; height: 100%; }
+.bk-emoji { font-size: 8rem; }
+.bk-text { display: grid; gap: 8px; justify-items: center; }
+.bk-text h1 { font-size: 2.6rem; line-height: 1.05; margin: 0; font-weight: 700; color: #1F2A44; }
+.bk-step { letter-spacing: .14em; font-weight: 700; color: #5B6478; font-size: .9rem; }
+.bk-say { font-size: 1.5rem; font-style: italic; color: #5B6478; margin: 0; }
+.bk-time { font-size: 1.4rem; font-weight: 700; }
+.bk-dots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 340px; }
+.bk-dots i { width: 16px; height: 16px; border-radius: 50%; background: #E9A93B; box-shadow: inset 0 0 0 2px #1F2A44; }
+.bk-timer { width: min(340px, 80%); height: 8px; border-radius: 999px; background: #EFE8DA; overflow: hidden; }
+.bk-timer i { display: block; height: 100%; width: 0; background: #E9A93B; animation: bk-fill linear forwards; }
+@keyframes bk-fill { to { width: 100%; } }
+.bk-hint { color: #8A8FA0; font-weight: 700; font-family: Nunito, sans-serif; }
+.bk-stars { display: flex; justify-content: center; gap: 8px; font-size: 1.6rem; color: #C9C2B4; margin-top: -4px; }
+.bk-stars span.on { color: #E9A93B; }
+.bk-stars span.big { font-size: 2.3rem; line-height: 1; }
+.bk-belongs { letter-spacing: .14em; font-weight: 700; color: #5B6478; margin-top: 8px; }
+.bk-name { font-size: 2rem; font-weight: 700; border-bottom: 3px solid #1F2A44; padding: 0 30px 4px; }
+.bk-page.end { padding: 70px 28px; }
+.bk-end-stars { font-size: 2.6rem; color: #E9A93B; }
+.bk-end-stars b { font-size: 3.6rem; }
+.bk-page.end h1 { font-size: 3.4rem; margin: 0; font-family: Andika, sans-serif; }
+@media (orientation: landscape) and (min-width: 900px) {
+  .bk-page { flex-direction: row; text-align: left; gap: 40px; padding: 36px 44px; }
+  .bk-page .bk-text { justify-items: start; }
+  .bk-page.end { flex-direction: column; text-align: center; }
+  .bk-art { width: 280px; }
+}
+/* at bedtime the page is dimmed and warmed so it stays calm */
+body.buddy-night .bk-page { background: #2A2C45; color: #F0E3C4; box-shadow: none; }
+body.buddy-night .bk-page h1, body.buddy-night .bk-name { color: #F3DFAE; border-color: #F3DFAE; }
+body.buddy-night .bk-say, body.buddy-night .bk-step, body.buddy-night .bk-belongs { color: #C9BFA6; }
+body.buddy-night .bk-art { filter: brightness(.78) saturate(.8); }
+body.buddy-night .bk-dots i { box-shadow: none; opacity: .8; }
+body.buddy-night .bk-timer { background: #3A3D5E; }
+body.buddy-night .bk-stars { color: #4A4D6E; }
+/* flip book thumbnails in the routine editor */
+.mini-art { display: inline-block; width: 30px; height: 30px; vertical-align: middle; margin-right: 4px; }
+.mini-art svg { width: 100%; height: 100%; }
+.book-btn { background: #FFF3D6; color: #8A5A00; }
+.book-chip { display: inline-flex; align-items: center; }
+.night-btn { background: #2A2D5C; color: #FFE7B0; }
+.night-btn.on { background: #FFE7B0; color: #2A2D5C; }
+/* the grown-up corner must stay reachable on the sleep / wake / pop-up screens too */
+.buddy-secret { position: fixed; z-index: 60; }

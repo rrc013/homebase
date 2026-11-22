@@ -3,6 +3,7 @@
 //  - Demo (in-memory sample data, used when config.js is blank or ?demo is in the URL)
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { BOOK_STEPS } from './bedtime-book.js';
 
 export const TABLES = ['households', 'members', 'lists', 'list_items', 'messages', 'countdowns',
   'stores', 'catalog', 'catalog_locations', 'google_accounts', 'calendars', 'events', 'event_private', 'photos',
@@ -158,7 +159,7 @@ function createDemoBackend() {
   chore('Match the socks', '🧦', 3, { schedule: 'weekly' });
   const rr = (kind, steps, points = 5) => db.routines.push({ id: uid(), household_id: hid, member_id: har, kind, points, steps });
   rr('morning', [['🚽', 'Go potty'], ['🪥', 'Brush your teeth'], ['👗', 'Get dressed'], ['🥣', 'Eat breakfast'], ['🎒', 'Get your backpack']].map(([emoji, title]) => ({ emoji, title })));
-  rr('bedtime', [['🧸', 'Clean up toys'], ['🛁', 'Bath time'], ['👕', 'Put on pajamas'], ['🪥', 'Brush your teeth'], ['🚽', 'Go potty'], ['📖', 'Story time'], ['💤', 'Lights out']].map(([emoji, title]) => ({ emoji, title })));
+  rr('bedtime', BOOK_STEPS.map((x) => ({ ...x })));
   [['🍦', 'Ice cream treat', 15], ['🎬', 'Pick the family movie', 20], ['🛝', 'Park trip with Dad', 25], ['🌙', 'Stay up 15 min late', 25], ['🎨', 'New coloring book', 30], ['🧸', 'Small toy', 50]]
     .forEach(([emoji, title, cost], i) => db.rewards.push({ id: uid(), household_id: hid, member_id: null, title, emoji, cost, active: true, sort: i, created_at: iso(now) }));
   const dayStr = (d) => { const x = new Date(Date.now() + d * day); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };

@@ -2,10 +2,11 @@
 import { S, esc, byId, household, actions, hooks, $app, resizeImage, run, openSheet, toast } from './core.js';
 import {
   kids, profileOf, choresFor, choreDone, routineOf, routineDone, balance, earned, todayProgress,
-  completeChore, completeRoutine, requestReward, pendingRedeem, todayStr,
+  completeChore, completeRoutine, requestReward, pendingRedeem, todayStr, setBedtimeNow,
 } from './kids.js';
 import { petHtml, petOf, PETS, levelInfo, mood } from './pets.js';
 import { say, celebrate, tap, keepAwake } from './fun.js';
+import { BOOK, BOOK_ART, artFor } from './bedtime-book.js';
 
 S.buddy = { kidId: localStorage.getItem('hb.buddyKid'), screen: null, kind: null, preview: null, confirm: null, pickPet: null };
 const kid = () => byId('members', S.buddy.kidId) || kids()[0];
@@ -21,10 +22,11 @@ export function phase(k = kid()) {
   const p = profileOf(k), m = nowMins();
   const wake = mins(p.wake_time), sleep = mins(p.sleep_time), bed = mins(p.bedtime_start);
   const asleep = sleep > wake ? (m >= sleep || m < wake) : (m >= sleep && m < wake);
+  const early = p.bedtime_now === todayStr(); // a grown-up tapped "Start bedtime now"
   if (asleep) return 'sleep';
-  if (m >= bed && routineDone(k, 'bedtime')) return 'sleep';
-  if (m >= wake && m < wake + 30 && !routineDone(k, 'morning') && !localStorage.getItem(spokenKey('sunTapped'))) return 'wake';
-  if (m >= bed) return 'bedtime';
+  if ((m >= bed || early) && routineDone(k, 'bedtime')) return 'sleep';
+  if (!early && m >= wake && m < wake + 30 && !routineDone(k, 'morning') && !localStorage.getItem(spokenKey('sunTapped'))) return 'wake';
+  if (m >= bed || early) return 'bedtime';
   return 'day';
 }
 const voiceOn = () => profileOf(kid()).voice !== false;
@@ -41,7 +43,7 @@ export function renderBuddy() {
   let body;
   if (!profileOf(k).pet_kind && S.buddy.hadPet) {
     // a grown-up just reset this kid: forget today's routine progress + greetings
-    ['morning', 'bedtime'].forEach((kind) => localStorage.removeItem(routineKey(k, kind)));
+    ['morning', 'bedtime'].forEach((kind) => { localStorage.removeItem(routineKey(k, kind)); localStorage.removeItem(pageKey(k, kind)); });
     ['pickpet', 'sunTapped', 'wake', 'bedtime'].forEach((w) => localStorage.removeItem(spokenKey(w)));
     S.buddy.screen = null; S.buddy.confirm = null;
   }
@@ -125,15 +127,77 @@ function prizeScreen(k) {
 }
 
 function routineKey(k, kind) { return `hb.rt.${k.id}.${kind}.${todayStr()}`; }
+// ---- Bedtime Book mode: cover → one page per step → "You did it!"
+const isBook = (r) => (r?.steps || []).some((st) => st.art);
+const pageKey = (k, kind) => `${routineKey(k, kind)}.page`;
+const starTrack = (n, cur) => `<div class="bk-stars">${Array.from({ length: n }, (_, j) =>
+  `<span class="${j < cur ? 'on' : ''} ${j === cur - 1 ? 'big' : ''}">★</span>`).join('')}</div>`;
+const artBox = (st) => {
+  const a = artFor(st);
+  return a ? `<div class="bk-art" style="background:${a.bg}">${a.svg}</div>` : `<div class="bk-art" style="background:#EEE9F8"><span class="bk-emoji">${esc(st.emoji || '⭐')}</span></div>`;
+};
+function bookScreen(k, r) {
+  const steps = r.steps, n = steps.length;
+  const night = S.buddy.kind === 'bedtime';
+  let pg = +(localStorage.getItem(pageKey(k, S.buddy.kind)) || 0);
+  if (pg > n + 1) pg = n + 1;
+  const speakOnce = (text) => setTimeout(() => {
+    if (S.buddy.lastSpoken !== `bk${pg}`) { S.buddy.lastSpoken = `bk${pg}`; talk(text, { quiet: night }); }
+  }, 300);
+  let page;
+  if (pg === 0) {
+    speakOnce(`${BOOK.title}. ${BOOK.subtitle} Let's start, ${k.name}!`);
+    page = `<div class="bk-page cover">
+      <div class="bk-art" style="background:${BOOK_ART.moon.bg}">${BOOK_ART.moon.svg}</div>
+      <div class="bk-text"><h1>${BOOK.title}</h1><p class="bk-say">${BOOK.subtitle}</p>
+        <small class="bk-belongs">THIS BOOK BELONGS TO</small><div class="bk-name">${esc(k.name)}</div></div>
+    </div>`;
+  } else if (pg <= n) {
+    const st = steps[pg - 1];
+    speakOnce(`${st.title}. ${st.say || ''}`);
+    const mins = +st.minutes || 0;
+    page = `<button class="bk-page" data-act="b-say" data-text="${esc(`${st.title}. ${st.say || ''}`)}">
+      ${artBox(st)}
+      <div class="bk-text">
+        <small class="bk-step">STEP ${pg} OF ${n}</small>
+        <h1>${esc(st.title)}</h1>
+        ${st.say ? `<p class="bk-say">${esc(st.say)}</p>` : ''}
+        ${mins ? `<div class="bk-time">🕒 ${mins} minute${mins === 1 ? '' : 's'}</div>
+          <div class="bk-dots">${'<i></i>'.repeat(Math.min(mins, 15))}</div>
+          <div class="bk-timer"><i style="animation-duration:${mins * 60}s"></i></div>` : (pg === n ? '<div class="bk-time">Lights out</div>' : '')}
+        <small class="bk-hint">🔊 tap to hear it again</small>
+      </div>
+    </button>
+    ${starTrack(n, pg)}`;
+  } else {
+    speakOnce(`You did it, ${k.name}! ${BOOK.endLine}`);
+    page = `<div class="bk-page end">
+      <div class="bk-end-stars">★ <b>★</b> ★</div>
+      <h1>${BOOK.endTitle}</h1>
+      <p class="bk-say">${BOOK.endLine}</p>
+    </div>`;
+  }
+  const btn = pg === 0 ? "Let's go! 🌙" : pg <= n ? '✓ Done!' : 'Goodnight 💤';
+  return `
+    ${topBar(k, { stars: false })}
+    <div class="b-row"><button class="b-back" data-act="b-home">‹</button><h1 class="b-title">${night ? '🌙 Bedtime' : '☀️ Morning'}</h1></div>
+    ${page}
+    <div class="rt-nav">
+      ${pg > 0 ? '<button class="b-back big" data-act="b-page" data-d="-1">‹</button>' : '<span></span>'}
+      <button class="b-big-btn" data-act="b-page" data-d="1">${btn}</button>
+    </div>`;
+}
+
 function routineScreen(k) {
   const r = routineOf(k, S.buddy.kind);
+  if (isBook(r)) return bookScreen(k, r);
   const steps = r?.steps || [];
   const night = S.buddy.kind === 'bedtime';
   let i = +(localStorage.getItem(routineKey(k, S.buddy.kind)) || 0);
   if (i >= steps.length) i = steps.length - 1;
   const step = steps[i];
   if (!step) return `${topBar(k, { stars: false })}<p class="b-none">No steps yet.</p><button class="b-big-btn" data-act="b-home">Back</button>`;
-  setTimeout(() => { if (S.buddy.lastSpoken !== `${S.buddy.kind}${i}`) { S.buddy.lastSpoken = `${S.buddy.kind}${i}`; talk(step.title, { quiet: night }); } }, 250);
+  setTimeout(() => { if (S.buddy.lastSpoken !== `${S.buddy.kind}${i}`) { S.buddy.lastSpoken = `${S.buddy.kind}${i}`; talk(`${step.title}${step.say ? `. ${step.say}` : ''}`, { quiet: night }); } }, 250);
   return `
     ${topBar(k, { stars: false })}
     <div class="b-row"><button class="b-back" data-act="b-home">‹</button><h1 class="b-title">${night ? '🌙 Bedtime' : '☀️ Morning'}</h1></div>
@@ -231,6 +295,9 @@ function parentGate() {
   openSheet(`
     <h2>Grown-up menu</h2>
     <div class="stack-sm">
+      ${profileOf(kid()).bedtime_now === todayStr()
+        ? '<button type="button" class="btn" data-act="bp-bedtime" data-on="">↩︎ Cancel early bedtime</button>'
+        : '<button type="button" class="btn primary" data-act="bp-bedtime" data-on="1">🌙 Start bedtime now</button>'}
       <button type="button" class="btn" data-act="bp-preview" data-p="">🕒 Normal (follow the clock)</button>
       <div class="row wrap">${[['wake', '🌞 Wake'], ['day', '🏠 Day'], ['bedtime', '🌙 Bedtime'], ['sleep', '💤 Sleep']]
         .map(([p, t]) => `<button type="button" class="btn ghost" data-act="bp-preview" data-p="${p}">Preview ${t}</button>`).join('')}</div>
@@ -328,6 +395,23 @@ Object.assign(actions, {
     localStorage.setItem(key, String(Math.max(0, i)));
     hooks.render();
   },
+  'b-page': async (el) => {
+    const k = kid(), r = routineOf(k, S.buddy.kind), key = pageKey(k, S.buddy.kind);
+    const night = S.buddy.kind === 'bedtime';
+    const n = r.steps.length;
+    const pg = Math.max(0, +(localStorage.getItem(key) || 0) + +el.dataset.d);
+    tap();
+    if (pg > n + 1) { // tapped "Goodnight" on the last page
+      const saved = await run(() => completeRoutine(k, r));
+      celebrate({ quiet: night, emojis: ['⭐', '✨', '🌙'] });
+      if (saved) talk(`You earned ${r.points} stars. Sleep tight, ${k.name}.`, { quiet: night });
+      localStorage.setItem(key, String(n + 1));
+      go({ screen: null, kind: null });
+      return;
+    }
+    localStorage.setItem(key, String(pg));
+    hooks.render();
+  },
   'b-wake-ok': () => {
     localStorage.setItem(spokenKey('sunTapped'), '1');
     const k = kid();
@@ -343,11 +427,17 @@ Object.assign(actions, {
     clearTimeout(S.buddy.msgT); S.buddy.msgT = setTimeout(() => msg.classList.remove('show'), 6000);
   },
   // grown-up menu
+  'bp-bedtime': async (el) => {
+    S.buddy.preview = null; S.buddy.screen = null;
+    await setBedtimeNow(kid(), !!el.dataset.on);
+    document.querySelector('button[data-act=sheet-close]')?.click();
+    hooks.render();
+  },
   'bp-preview': (el) => { S.buddy.preview = el.dataset.p || null; S.buddy.screen = null; document.querySelector('button[data-act=sheet-close]')?.click(); hooks.render(); },
   'bp-kid': () => { S.buddy.kidId = document.getElementById('bp-kid').value; localStorage.setItem('hb.buddyKid', S.buddy.kidId); document.querySelector('button[data-act=sheet-close]')?.click(); hooks.render(); },
   'bp-reset': () => {
     const k = kid();
-    ['morning', 'bedtime'].forEach((kind) => localStorage.removeItem(routineKey(k, kind)));
+    ['morning', 'bedtime'].forEach((kind) => { localStorage.removeItem(routineKey(k, kind)); localStorage.removeItem(pageKey(k, kind)); });
     ['sunTapped', 'wake', 'bedtime'].forEach((w) => localStorage.removeItem(spokenKey(w)));
     toast('Routine progress restarted (stars already earned are kept)');
   },

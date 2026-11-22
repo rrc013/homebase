@@ -5,6 +5,7 @@ import {
 } from './core.js';
 import { petHtml, levelInfo, petOf, PETS } from './pets.js';
 import { celebrate } from './fun.js';
+import { BOOK_STEPS, artFor } from './bedtime-book.js';
 
 const PHOTO_BUCKET = 'chore-photos';
 export const CHORE_EMOJIS = ['🧸', '🍽️', '🐾', '🧺', '🪴', '🛏️', '🧦', '📚', '🗑️', '🧹', '🧽', '🚗', '🥕', '🎒', '👟', '🪥', '🐶', '🐱', '🧼', '🌳', '📬', '🎹', '✏️', '⭐'];
@@ -81,6 +82,17 @@ export async function requestReward(kid, reward) {
   S.api.fn('notify', { action: 'approval', completion_id: saved.id }).catch(() => {});
   return saved;
 }
+// "Start bedtime now": puts the kid's Buddy into bedtime mode right away (until tomorrow)
+export async function setBedtimeNow(kid, on) {
+  const row = { bedtime_now: on ? todayStr() : null, updated_at: new Date().toISOString() };
+  const ok = await run(async () => {
+    if (S.data.kid_profiles.some((x) => x.member_id === kid.id)) await S.api.updateWhere('kid_profiles', 'member_id', kid.id, row);
+    else await S.api.insert('kid_profiles', { ...row, member_id: kid.id, household_id: household().id });
+    return true;
+  }, on ? `🌙 Bedtime started for ${kid.name}` : 'Early bedtime cancelled');
+  if (ok) await hooks.loadAll();
+  return ok;
+}
 export const pendingRedeem = (kid) => ledger(kid).filter((x) => x.kind === 'redeem' && x.status === 'pending');
 
 // make sure every kid has a profile + starter routines (parents' devices do this once)
@@ -96,11 +108,11 @@ export async function ensureKidSetup() {
     }
     for (const [kind, steps] of [
       ['morning', [['🚽', 'Go potty'], ['🪥', 'Brush your teeth'], ['👗', 'Get dressed'], ['🥣', 'Eat breakfast'], ['🎒', 'Get your backpack']]],
-      ['bedtime', [['🧸', 'Clean up toys'], ['🛁', 'Bath time'], ['👕', 'Put on pajamas'], ['🪥', 'Brush your teeth'], ['🚽', 'Go potty'], ['📖', 'Story time'], ['💤', 'Lights out']]],
+      ['bedtime', null], // bedtime uses the Bedtime Routine Flip Book
     ]) {
       if (!routineOf(kid, kind)) {
         await run(() => S.api.insert('routines', { household_id: household().id, member_id: kid.id, kind, points: 5,
-          steps: steps.map(([emoji, title]) => ({ emoji, title })) }));
+          steps: steps ? steps.map(([emoji, title]) => ({ emoji, title })) : BOOK_STEPS.map((x) => ({ ...x })) }));
         changed = true;
       }
     }
@@ -198,6 +210,9 @@ export function kidCard(kid, { compact = false } = {}) {
           <span class="ct-pts">${d ? (d.status === 'pending' ? '⏳' : '✓') : `${c.points}⭐`}${c.photo_proof && !d ? ' 📷' : ''}</span></button>`;
       }).join('') || '<p class="muted small">No chores today.</p>'}</div>`}
       ${isParent && !compact ? `<div class="row wrap kid-actions">
+        ${prof.bedtime_now === todayStr()
+          ? (routineDone(kid, 'bedtime') ? '<span class="rchip done">🌙 Bedtime done</span>' : `<button class="btn small-btn night-btn on" data-act="kid-bedtime" data-id="${kid.id}" data-on="">🌙 Bedtime started · Cancel</button>`)
+          : `<button class="btn small-btn night-btn" data-act="kid-bedtime" data-id="${kid.id}" data-on="1">🌙 Start bedtime now</button>`}
         <button class="btn small-btn" data-act="kid-bonus" data-id="${kid.id}">＋ Bonus stars</button>
         <button class="btn small-btn ghost" data-act="kids-view" data-view="activity:${kid.id}">📜 Activity</button>
         <button class="btn small-btn ghost" data-act="kid-settings" data-id="${kid.id}">⚙️ Pet, routines & bedtime</button>
@@ -356,6 +371,7 @@ function sheetKidSettings(kid) {
       <label>🌙 Bedtime routine starts<input type="time" name="bedtime_start" value="${String(p.bedtime_start).slice(0, 5)}"></label>
       <label>💤 Sleep time (moon)<input type="time" name="sleep_time" value="${String(p.sleep_time).slice(0, 5)}"></label>
     </div>
+    <small class="muted">Bedtime starts on its own at the time above. On early nights, tap <b>🌙 Start bedtime now</b> on ${esc(kid.name)}'s card (or in the Buddy's grown-up menu).</small>
     <label class="check-row"><input type="checkbox" name="voice" ${p.voice ? 'checked' : ''}> 🔊 Read everything out loud</label>
     <div class="row wrap">
       <button type="button" class="btn" data-act="routine-edit" data-kid="${kid.id}" data-kind="morning">☀️ Edit morning steps</button>
@@ -383,7 +399,10 @@ function sheetRoutine(kid, kind) {
   openSheet(`
     <h2>${kind === 'morning' ? '☀️ Morning' : '🌙 Bedtime'} routine — ${esc(kid.name)}</h2>
     <p class="muted small">Each step is shown as a big picture and read out loud. Finishing all steps earns the stars below.</p>
+    ${kind === 'bedtime' ? `<button type="button" class="btn book-btn" data-act="step-book">📖 Use our Bedtime Routine Flip Book (all 10 pages)</button>` : ''}
     <ul class="sec-list step-list" id="step-list"></ul>
+    ${kind === 'bedtime' ? `<label>Add a page from the flip book<span></span></label>
+    <div class="picker">${BOOK_STEPS.map((b, i) => `<button type="button" class="person book-chip" data-act="step-add-book" data-i="${i}">${artFor(b) ? `<span class="mini-art">${artFor(b).svg}</span>` : ''}${esc(b.title)}</button>`).join('')}</div>` : ''}
     <label>Add a step<span></span></label>
     <div class="picker">${STEP_PRESETS.map(([e, t]) => `<button type="button" class="person" data-act="step-add" data-emoji="${e}" data-title="${esc(t)}">${e} ${esc(t)}</button>`).join('')}</div>
     <div class="row"><input id="step-new" placeholder="Or type your own step"><button type="button" class="btn" data-act="step-add-own">Add</button></div>
@@ -398,7 +417,7 @@ function sheetRoutine(kid, kind) {
 function renderSteps() {
   const ul = document.getElementById('step-list'); if (!ul) return;
   ul.innerHTML = S.stepEdit.map((s, i) => `
-    <li><span class="sec-num">${esc(s.emoji)}</span><span class="sec-name">${esc(s.title)}</span>
+    <li><span class="sec-num">${artFor(s) ? `<span class="mini-art">${artFor(s).svg}</span>` : esc(s.emoji)}</span><span class="sec-name">${esc(s.title)}${s.minutes ? `<small class="muted"> · ${s.minutes} min</small>` : ''}</span>
       <button type="button" class="icon-btn" data-act="step-move" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button type="button" class="icon-btn" data-act="step-move" data-i="${i}" data-d="1" ${i === S.stepEdit.length - 1 ? 'disabled' : ''}>↓</button>
       <button type="button" class="icon-btn" data-act="step-del" data-i="${i}">✕</button></li>`).join('') || '<li class="muted small">No steps yet — add some below.</li>';
@@ -443,6 +462,12 @@ Object.assign(actions, {
   'reward-new': () => sheetReward(null),
   'reward-edit': (el) => sheetReward(byId('rewards', el.dataset.id)),
   'kid-bonus': (el) => sheetBonus(byId('members', el.dataset.id)),
+  'kid-bedtime': async (el) => {
+    const kid = byId('members', el.dataset.id);
+    if (el.dataset.on && !confirm(`Start bedtime now? ${kid.name}'s Buddy will switch to the bedtime routine.`)) return;
+    await setBedtimeNow(kid, !!el.dataset.on);
+    hooks.render();
+  },
   'kid-settings': (el) => sheetKidSettings(byId('members', el.dataset.id)),
   'kid-reset': async (el) => {
     const kid = byId('members', el.dataset.id);
@@ -457,6 +482,11 @@ Object.assign(actions, {
     await hooks.loadAll(); hooks.render();
   },
   'routine-edit': (el) => sheetRoutine(byId('members', el.dataset.kid), el.dataset.kind),
+  'step-book': () => {
+    if (S.stepEdit.length && !confirm('Replace the current bedtime steps with the 10 flip book pages?')) return;
+    S.stepEdit = BOOK_STEPS.map((x) => ({ ...x })); renderSteps();
+  },
+  'step-add-book': (el) => { S.stepEdit.push({ ...BOOK_STEPS[+el.dataset.i] }); renderSteps(); },
   'step-add': (el) => { S.stepEdit.push({ emoji: el.dataset.emoji, title: el.dataset.title }); renderSteps(); },
   'step-add-own': () => {
     const i = document.getElementById('step-new'); const t = i.value.trim();

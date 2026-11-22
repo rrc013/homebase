@@ -40,6 +40,18 @@ Allow about 20 minutes. Nothing changes in Google Cloud or the server function t
    - exit Buddy mode
 6. Turn the tablet's volume up so she hears the voice.
 
+## Starting bedtime
+- **Automatic:** at the **Bedtime routine starts** time, her Buddy turns dim, says "Let's do your bedtime routine," and shows **🌙 Bedtime routine – Start**.
+- **Manual (early nights):** tap **🌙 Start bedtime now** on Harper's card in the **Kids** tab, or in the Buddy's grown-up menu. Her Buddy switches within a few seconds. Tap again to cancel.
+- After she finishes, the Buddy shows the sleep clock until OK-to-wake. The next morning everything is back to normal.
+- *This needs `supabase/08-bedtime-now.sql` run once (SQL Editor → New query → Run).*
+
+## Harper's Bedtime Routine Flip Book
+Her bedtime routine on the Buddy uses the flip book you designed: the cover, then one page per step with your drawings, the words read softly, the time and the star track, ending on "You did it! Goodnight. I love you."
+- **New setups** get the flip book automatically.
+- **If Harper's bedtime routine was already created:** on your phone, go to **Kids** → **⚙️ Pet, routines & bedtime** → **🌙 Edit bedtime steps** → **📖 Use our Bedtime Routine Flip Book**, then tap **Save**.
+- You can remove, reorder or add single flip-book pages in the same editor.
+
 ## Demo first, then let Harper set it up
 Try it out as much as you like. When you're ready to hand it over:
 1. On your phone, open **Kids** → Harper's card → **⚙️ Pet, routines & bedtime**.
