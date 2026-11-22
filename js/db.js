@@ -85,6 +85,11 @@ function createSupabaseBackend(sb) {
       return path;
     },
     async deletePhoto(path, bucket = BUCKET) { if (path) await sb.storage.from(bucket).remove([path]); },
+    async uploadMedia(householdId, blob, bucket, ext, contentType) {
+      const path = `${householdId}/${crypto.randomUUID()}.${ext}`;
+      ok(await sb.storage.from(bucket).upload(path, blob, { contentType }));
+      return path;
+    },
     async photoUrls(paths, bucket = BUCKET) {
       if (!paths.length) return {};
       const data = ok(await sb.storage.from(bucket).createSignedUrls(paths, 60 * 60 * 12));
@@ -378,6 +383,7 @@ function createDemoBackend() {
     async removeWhere(table, col, val) { db[table] = db[table].filter((x) => x[col] !== val); changed(table); },
     async uploadPhoto(householdId, blob, _bucket) { const path = `${householdId}/${uid()}.jpg`; photos[path] = URL.createObjectURL(blob); return path; },
     async deletePhoto(path) { delete photos[path]; },
+    async uploadMedia(householdId, blob, _bucket, ext) { const path = `${householdId}/${uid()}.${ext}`; photos[path] = URL.createObjectURL(blob); return path; },
     async photoUrls(paths) { return Object.fromEntries(paths.filter((p) => photos[p]).map((p) => [p, photos[p]])); },
     subscribe(cb) { changeCb = cb; },
   };

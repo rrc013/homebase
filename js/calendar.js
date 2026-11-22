@@ -45,10 +45,25 @@ function eventRange(ev) {
   return [dayStart(s), dayStart(e < s ? s : e)];
 }
 export function visibleEvents() {
-  return S.data.events.filter((ev) => {
+  const list = S.data.events.filter((ev) => {
     const cal = calOf(ev);
     return cal && cal.show && !S.cal.hidden.has(memberKey(ev));
   });
+  // the same event on two people's calendars (e.g. a shared invite) shows once, with both faces
+  const seen = new Map(), out = [];
+  for (const ev of list) {
+    if (ev.private) { out.push(ev); continue; }
+    const key = `${(ev.title || '').trim().toLowerCase()}|${ev.all_day ? ev.start_date + ev.end_date : ev.start_at + ev.end_at}`;
+    const first = seen.get(key);
+    if (first) {
+      const who = ownerOf(ev);
+      if (who && !first._who.some((m) => m.id === who.id)) first._who.push(who);
+      continue;
+    }
+    const copy = { ...ev, _who: ownerOf(ev) ? [ownerOf(ev)] : [] };
+    seen.set(key, copy); out.push(copy);
+  }
+  return out;
 }
 export function eventsOnDay(date, list = visibleEvents()) {
   const d = dayStart(date);
@@ -67,11 +82,12 @@ const shortTime = (ev, day) => {
   return day && !sameDay(s, day) ? timeLabel(ev, day) : fmtTime(s);
 };
 export const evChip = (ev, day, opts = {}) => {
-  const owner = ownerOf(ev);
+  const owners = ev._who || (ownerOf(ev) ? [ownerOf(ev)] : []);
+  const owner = owners[0];
   return `<button class="ev ${ev.all_day ? 'allday' : ''} ${opts.compact ? 'compact' : ''}" style="--c:${esc(evColor(ev))}" data-act="ev-open" data-id="${ev.id}">
     ${ev.all_day ? '' : `<span class="ev-time">${esc(opts.compact || opts.short ? shortTime(ev, day) : timeLabel(ev, day))}</span>`}
     <span class="ev-title">${esc(evTitle(ev))}</span>
-    ${opts.compact || !owner ? '' : `<span class="ev-who">${esc(owner.emoji)}</span>`}
+    ${opts.compact || !owner ? '' : `<span class="ev-who">${owners.map((m) => esc(m.emoji)).join('')}</span>`}
   </button>`;
 };
 

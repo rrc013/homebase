@@ -3,7 +3,7 @@ import { TABLES } from './db.js';
 
 // Other modules register click actions here: actions['my-action'] = (el, event) => {...}
 export const actions = {};
-export const APP_VERSION = '2026.11.22c · bedtime button opens the flip book';
+export const APP_VERSION = '2026.11.22h · timer chime';
 // app.js fills these in so modules can trigger a redraw / data reload
 export const hooks = { render: () => {}, reload: () => {} };
 

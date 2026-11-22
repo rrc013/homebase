@@ -70,7 +70,7 @@ function hubHome() {
     <section class="hub-col">
       <div class="hub-clock-box">
         <div class="hub-clock"><span data-clock>${clockText()}</span><small data-ampm>${ampm()}</small></div>
-        <div class="hub-date" data-date>${dateText()}</div>
+        <div class="hub-date" data-hubdate>${dateText()}</div>
       </div>
       <div class="card hub-wx" data-act="wx-location">${weatherNowHtml()}${forecastHtml(5)}</div>
       ${countdowns.length ? `<div class="card hub-cd">${countdowns.map((c) => `
@@ -165,7 +165,7 @@ function hubPeople() {
 setInterval(() => {
   document.querySelectorAll('[data-clock]').forEach((el) => { el.textContent = clockText(); });
   document.querySelectorAll('[data-ampm]').forEach((el) => { el.textContent = ampm(); });
-  document.querySelectorAll('[data-date]').forEach((el) => { el.textContent = dateText(); });
+  document.querySelectorAll('[data-hubdate]').forEach((el) => { el.textContent = dateText(); });
 }, 10_000);
 // redraw the dashboard every few minutes so "up next" and due items stay current
 setInterval(() => { if (S.mode === 'hub' && S.hubTab === 'home' && !document.getElementById('saver') && !document.querySelector('#sheet-root.open')) hooks.render(); }, 3 * 60e3);
@@ -186,7 +186,7 @@ function saverOverlay() {
   return `
     <div class="saver-info">
       <div class="hub-clock"><span data-clock>${clockText()}</span><small data-ampm>${ampm()}</small></div>
-      <div class="hub-date" data-date>${dateText()}</div>
+      <div class="hub-date" data-hubdate>${dateText()}</div>
       ${w ? `<div class="saver-wx">${wx(w.current.code, w.current.isDay)[0]} ${w.current.temp}° · ${esc(household()?.weather_place?.split(',')[0] || '')}</div>` : ''}
       ${next ? `<div class="saver-next"><small>Next</small> ${esc(evTitle(next))} · ${new Date(next.start_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</div>` : ''}
     </div>`;

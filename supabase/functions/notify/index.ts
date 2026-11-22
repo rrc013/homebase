@@ -136,7 +136,9 @@ export async function handle(req: Request): Promise<Response> {
         const parents = (await sql`select id from public.members where household_id = ${member.household_id} and kind = 'parent'`).map((m: any) => m.id);
         const payload = c.kind === 'redeem'
           ? { title: `🎁 ${kid?.name} wants a prize`, body: `${c.emoji} ${c.title} (${-c.points} ⭐) — tap to approve` }
-          : { title: `📷 ${kid?.name} finished a job`, body: `${c.emoji} ${c.title} — check the photo and approve ${c.points} ⭐` };
+          : c.kind === 'request'
+            ? { title: `🎬 ${kid?.name} sent you a video`, body: 'Something good she did — watch it and choose her stars' }
+            : { title: `📷 ${kid?.name} finished a job`, body: `${c.emoji} ${c.title} — check the photo and approve ${c.points} ⭐` };
         return json({ sent: await sendTo(parents, { ...payload, url: './?tab=kids', tag: `approval-${c.id}` }) });
       }
 

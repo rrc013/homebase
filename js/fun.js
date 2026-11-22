@@ -24,6 +24,7 @@ export function say(text, { quiet = false, enabled = true } = {}) {
 let ctx;
 function tone(freq, start, dur, vol = 0.18, type = 'sine') {
   ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   const o = ctx.createOscillator(), g = ctx.createGain();
   o.type = type; o.frequency.value = freq;
   g.gain.setValueAtTime(0, ctx.currentTime + start);
@@ -75,4 +76,13 @@ export function goFullscreen() {
   const el = document.documentElement;
   if (document.fullscreenElement || !el.requestFullscreen) return;
   el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+}
+
+// "time's up" — a soft music-box tune (quieter at bedtime), played twice
+export function timerChime({ quiet = false } = {}) {
+  try {
+    const v = quiet ? 0.07 : 0.16;
+    const tune = [784, 659, 523, 659, 784];
+    [0, 1.6].forEach((rep) => tune.forEach((f, i) => tone(f, rep + i * 0.22, 0.6, v, 'sine')));
+  } catch { /* audio not available */ }
 }

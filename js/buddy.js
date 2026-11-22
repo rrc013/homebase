@@ -3,9 +3,10 @@ import { S, esc, byId, household, actions, hooks, $app, resizeImage, run, openSh
 import {
   kids, profileOf, choresFor, choreDone, routineOf, routineDone, balance, earned, todayProgress,
   completeChore, completeRoutine, requestReward, pendingRedeem, todayStr, setBedtimeNow,
+  requestsToday, requestStarsWithVideo, VIDEO_LIMIT_PER_DAY,
 } from './kids.js';
 import { petHtml, petOf, PETS, levelInfo, mood } from './pets.js';
-import { say, celebrate, tap, keepAwake } from './fun.js';
+import { say, celebrate, tap, keepAwake, timerChime } from './fun.js';
 import { BOOK, BOOK_ART, artFor } from './bedtime-book.js';
 
 S.buddy = { kidId: localStorage.getItem('hb.buddyKid'), screen: null, kind: null, preview: null, confirm: null, pickPet: null };
@@ -23,6 +24,8 @@ export function phase(k = kid()) {
   const wake = mins(p.wake_time), sleep = mins(p.sleep_time), bed = mins(p.bedtime_start);
   const asleep = sleep > wake ? (m >= sleep || m < wake) : (m >= sleep && m < wake);
   const early = p.bedtime_now === todayStr(); // a grown-up tapped "Start bedtime now"
+  // a grown-up starting bedtime wins over the clock, even after sleep time (until she finishes)
+  if (early && !routineDone(k, 'bedtime') && m >= wake) return 'bedtime';
   if (asleep) return 'sleep';
   if ((m >= bed || early) && routineDone(k, 'bedtime')) return 'sleep';
   if (!early && m >= wake && m < wake + 30 && !routineDone(k, 'morning') && !localStorage.getItem(spokenKey('sunTapped'))) return 'wake';
@@ -45,7 +48,7 @@ export function renderBuddy() {
     const token = `${k.id}:${prof.updated_at}`;
     if (localStorage.getItem('hb.bedNowOpened') !== token) {
       localStorage.setItem('hb.bedNowOpened', token);
-      localStorage.removeItem(routineKey(k, 'bedtime')); localStorage.removeItem(pageKey(k, 'bedtime'));
+      localStorage.removeItem(routineKey(k, 'bedtime')); localStorage.removeItem(pageKey(k, 'bedtime')); localStorage.removeItem(`${pageKey(k, 'bedtime')}.timer`);
       Object.assign(S.buddy, { screen: 'routine', kind: 'bedtime', confirm: null, preview: null, lastSpoken: null });
     }
   }
@@ -63,6 +66,7 @@ export function renderBuddy() {
   if (!profileOf(k).pet_kind) body = petPicker(k);
   else if (S.buddy.screen === 'routine') body = routineScreen(k);
   else if (S.buddy.screen === 'prizes') body = prizeScreen(k);
+  else if (S.buddy.screen === 'record') body = recordScreen(k);
   else if (ph === 'sleep') body = sleepScreen(k);
   else if (ph === 'wake') body = wakeScreen(k);
   else if (ph === 'bedtime') body = bedtimeScreen(k);
@@ -70,7 +74,8 @@ export function renderBuddy() {
   $app.innerHTML = `<div class="buddy phase-${ph}">
     <button class="buddy-secret" aria-label="Grown-ups" data-hold="parent"><span>🔒</span></button>
     ${S.api.demo ? '<div class="demo-banner">Demo mode — hold the 🔒 in the bottom-right corner (or the clock) for 2 seconds for the grown-up menu (PIN 1234)</div>' : ''}
-    ${body}${S.buddy.confirm ? confirmOverlay(k) : ''}</div>`;
+    ${body}${S.buddy.confirm ? confirmOverlay(k) : newsOverlay(k, ph)}</div>`;
+  if (S.buddy.screen === 'record') attachCamera();
 }
 
 function topBar(k, { stars = true } = {}) {
@@ -111,6 +116,7 @@ function dayScreen(k) {
       <div class="b-bubble">${esc(md.line)}</div>
       <div class="b-level"><span>${esc(prof.pet_name)} · Level ${level}</span><div class="lvl-bar"><i style="width:${Math.round(progress * 100)}%"></i></div></div>
     </div>
+    <button class="b-proud" data-act="b-record">🙋 I did something good!</button>
     <h2 class="b-h2">My jobs <small>${prog.done}/${prog.total}</small></h2>
     <div class="b-jobs">${chores.map((c) => {
       const d = choreDone(c, k);
@@ -148,6 +154,23 @@ const artBox = (st) => {
   const a = artFor(st);
   return a ? `<div class="bk-art" style="background:${a.bg}">${a.svg}</div>` : `<div class="bk-art" style="background:#EEE9F8"><span class="bk-emoji">${esc(st.emoji || '⭐')}</span></div>`;
 };
+function timeLeftText(endsAt) {
+  const left = Math.ceil((endsAt - Date.now()) / 60000);
+  return left <= 0 ? "✓ Time's up" : `${left} min left`;
+}
+// keep "x min left" current without redrawing the page, and ring once when the time is up
+setInterval(() => document.querySelectorAll('.bk-left[data-ends]').forEach((el) => {
+  el.textContent = timeLeftText(+el.dataset.ends);
+  if (Date.now() < +el.dataset.ends || document.hidden) return;
+  let t = null; try { t = JSON.parse(localStorage.getItem(el.dataset.tkey) || 'null'); } catch { t = null; }
+  if (!t || t.rung) return;
+  t.rung = true; localStorage.setItem(el.dataset.tkey, JSON.stringify(t));
+  const night = S.buddy.kind === 'bedtime';
+  el.classList.add('ding');
+  timerChime({ quiet: night });
+  setTimeout(() => talk(`Time's up! Tap done when you're ready.`, { quiet: night }), 3400);
+}), 5_000);
+
 function bookScreen(k, r) {
   const steps = r.steps, n = steps.length;
   const night = S.buddy.kind === 'bedtime';
@@ -168,6 +191,11 @@ function bookScreen(k, r) {
     const st = steps[pg - 1];
     speakOnce(`${st.title}. ${st.say || ''}`);
     const mins = +st.minutes || 0;
+    // remember when this page started so redraws don't restart the timer
+    const tKey = `${pageKey(k, S.buddy.kind)}.timer`;
+    let t = null; try { t = JSON.parse(localStorage.getItem(tKey) || 'null'); } catch { t = null; }
+    if (!t || t.pg !== pg) { t = { pg, start: Date.now() }; localStorage.setItem(tKey, JSON.stringify(t)); }
+    const total = mins * 60, elapsed = Math.min(total, (Date.now() - t.start) / 1000), endsAt = t.start + total * 1000;
     page = `<button class="bk-page" data-act="b-say" data-text="${esc(`${st.title}. ${st.say || ''}`)}">
       ${artBox(st)}
       <div class="bk-text">
@@ -176,7 +204,8 @@ function bookScreen(k, r) {
         ${st.say ? `<p class="bk-say">${esc(st.say)}</p>` : ''}
         ${mins ? `<div class="bk-time">🕒 ${mins} minute${mins === 1 ? '' : 's'}</div>
           <div class="bk-dots">${'<i></i>'.repeat(Math.min(mins, 15))}</div>
-          <div class="bk-timer"><i style="animation-duration:${mins * 60}s"></i></div>` : (pg === n ? '<div class="bk-time">Lights out</div>' : '')}
+          <div class="bk-timer"><i style="animation-duration:${total}s;animation-delay:-${elapsed.toFixed(1)}s"></i></div>
+          <div class="bk-left" data-ends="${endsAt}" data-tkey="${tKey}">${timeLeftText(endsAt)}</div>` : (pg === n ? '<div class="bk-time">Lights out</div>' : '')}
         <small class="bk-hint">🔊 tap to hear it again</small>
       </div>
     </button>
@@ -260,6 +289,122 @@ function wakeScreen(k) {
     </div>`;
 }
 
+// ------------------------------------------------------------------ "I did something good!" video recorder
+const rec = { stream: null, recorder: null, chunks: [], blob: null, url: null, mime: '', facing: 'user', state: 'live', left: 20, timer: null, error: null };
+const MAX_SECONDS = 20;
+async function startCamera() {
+  stopCamera();
+  rec.error = null;
+  try {
+    rec.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: rec.facing, width: { ideal: 640 }, height: { ideal: 480 } }, audio: true,
+    });
+  } catch (e) { rec.error = e.name === 'NotAllowedError' ? 'denied' : 'nocam'; }
+  hooks.render();
+}
+function stopCamera() { rec.stream?.getTracks().forEach((t) => t.stop()); rec.stream = null; }
+function attachCamera() {
+  const v = document.getElementById('rec-live');
+  if (v && rec.stream && v.srcObject !== rec.stream) { v.srcObject = rec.stream; v.play().catch(() => {}); }
+}
+function pickMime() {
+  const opts = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+  return opts.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+}
+function leaveRecorder() {
+  clearInterval(rec.timer); if (rec.recorder?.state === 'recording') rec.recorder.stop();
+  stopCamera(); if (rec.url) URL.revokeObjectURL(rec.url);
+  Object.assign(rec, { recorder: null, chunks: [], blob: null, url: null, state: 'live', left: MAX_SECONDS });
+}
+
+function recordScreen(k) {
+  if (rec.error) {
+    return `${topBar(k, { stars: false })}
+      <div class="b-row"><button class="b-back" data-act="b-rec-close">‹</button><h1 class="b-title">Show Mom & Dad</h1></div>
+      <div class="b-center"><div style="font-size:5rem">📷</div>
+        <p class="b-soft">${rec.error === 'denied' ? 'Ask Mom or Dad to let Homebase use the camera and microphone.' : "The camera isn't working right now."}</p>
+        <button class="b-big-btn" data-act="b-rec-retry">Try again</button></div>`;
+  }
+  if (rec.state === 'review' || rec.state === 'sending') {
+    return `${topBar(k, { stars: false })}
+      <div class="b-row"><button class="b-back" data-act="b-rec-close">‹</button><h1 class="b-title">Your video</h1></div>
+      <video class="rec-video" src="${rec.url}" controls autoplay playsinline></video>
+      <div class="rec-actions">
+        <button class="b-no big" data-act="b-rec-again" ${rec.state === 'sending' ? 'disabled' : ''}>🔄 Try again</button>
+        <button class="b-big-btn" data-act="b-rec-send" ${rec.state === 'sending' ? 'disabled' : ''}>${rec.state === 'sending' ? 'Sending…' : '📨 Send to Mom & Dad'}</button>
+      </div>`;
+  }
+  const recording = rec.state === 'recording';
+  return `${topBar(k, { stars: false })}
+    <div class="b-row"><button class="b-back" data-act="b-rec-close">‹</button><h1 class="b-title">Show Mom & Dad!</h1></div>
+    <div class="rec-wrap ${recording ? 'is-rec' : ''}">
+      <video id="rec-live" class="rec-video live ${rec.facing === 'user' ? 'mirror' : ''}" muted playsinline autoplay></video>
+      ${recording ? `<div class="rec-badge">● <span id="rec-left">${rec.left}</span></div>` : ''}
+      ${!rec.stream ? '<div class="rec-loading">Starting the camera…</div>' : ''}
+    </div>
+    <div class="rec-actions">
+      ${recording ? '<span></span>' : '<button class="b-back big" data-act="b-rec-flip" aria-label="Switch camera">🔄</button>'}
+      <button class="rec-btn ${recording ? 'stop' : ''}" data-act="${recording ? 'b-rec-stop' : 'b-rec-start'}" aria-label="${recording ? 'Stop' : 'Record'}"><i></i></button>
+      <span class="rec-hint">${recording ? 'Tap to stop' : 'Tap the red button'}</span>
+    </div>`;
+}
+
+// ------------------------------------------------------------------ news: stars given/taken, prizes and videos answered
+const annKey = (k) => `hb.announced.${k.id}`;
+const sig = (x) => `${x.id}:${x.status}`;
+const parentWord = (m) => {
+  if (!m) return 'Mom or Dad';
+  if (/👩|👱‍♀️|👩‍🦰|👵/.test(m.emoji)) return 'Mommy';
+  if (/🧔|👨|👨‍🦱|👴/.test(m.emoji)) return 'Daddy';
+  return m.name;
+};
+function nextNews(k) {
+  const mine = S.data.completions.filter((x) => x.member_id === k.id);
+  const raw = localStorage.getItem(annKey(k));
+  if (!raw) { localStorage.setItem(annKey(k), JSON.stringify(mine.map(sig))); return null; } // first run: no flood of old news
+  const seen = new Set(JSON.parse(raw));
+  return mine.filter((x) => (x.kind === 'bonus' && x.status === 'approved') || ((x.kind === 'request' || x.kind === 'redeem') && x.status !== 'pending'))
+    .filter((x) => !seen.has(sig(x)))
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))[0] || null;
+}
+function markNews(k, x) {
+  const seen = JSON.parse(localStorage.getItem(annKey(k)) || '[]');
+  seen.push(sig(x));
+  localStorage.setItem(annKey(k), JSON.stringify(seen.slice(-600)));
+}
+function newsOverlay(k, ph) {
+  if (ph === 'sleep' || ph === 'wake' || S.buddy.screen === 'routine' || S.buddy.screen === 'record' || !profileOf(k).pet_kind) return '';
+  const x = nextNews(k);
+  if (!x) return '';
+  const who = parentWord(byId('members', x.reviewed_by || x.created_by));
+  const n = Math.abs(x.points);
+  let icon, big, line, happy = true;
+  if (x.kind === 'bonus' && x.points >= 0) {
+    icon = x.emoji && x.emoji !== '🌟' ? x.emoji : '🌟'; big = `+${n} ⭐`;
+    line = `${who} gave you ${n} star${n === 1 ? '' : 's'}${x.note ? ` for: ${x.note.toLowerCase()}` : ''}!`;
+  } else if (x.kind === 'bonus') {
+    happy = false; icon = '💭'; big = `−${n} ⭐`;
+    line = `You lost ${n} star${n === 1 ? '' : 's'}${x.note ? ` for: ${x.note.toLowerCase()}` : ''}. You can earn them back by being kind and helpful!`;
+  } else if (x.kind === 'request' && x.status === 'approved') {
+    icon = '🎬'; big = `+${n} ⭐`; line = `${who} watched your video! You earned ${n} star${n === 1 ? '' : 's'}${x.note ? ` for: ${x.note.toLowerCase()}` : ''}!`;
+  } else if (x.kind === 'request') {
+    happy = false; icon = '🎬'; big = 'Not this time'; line = `${who} watched your video. Not this time, but keep trying!`;
+  } else if (x.status === 'approved') {
+    icon = x.emoji; big = 'YES! 🎉'; line = `${who} said yes to ${x.title}!`;
+  } else {
+    happy = false; icon = x.emoji; big = 'Not right now'; line = `Not right now for ${x.title}. Keep saving your stars!`;
+  }
+  const night = ph === 'bedtime';
+  if (S.buddy.newsSpoken !== sig(x)) {
+    S.buddy.newsSpoken = sig(x);
+    setTimeout(() => { talk(line, { quiet: night || !happy }); if (happy) celebrate({ quiet: night }); }, 300);
+  }
+  return `<div class="b-confirm"><div class="b-confirm-card news ${happy ? '' : 'gentle'}">
+    <span class="bj-emoji huge">${esc(icon)}</span><h2>${esc(big)}</h2><p class="news-line">${esc(line)}</p>
+    <button class="b-big-btn" data-act="b-news-ok" data-id="${x.id}" data-status="${x.status}">${happy ? 'Yay! 🎉' : 'Okay'}</button>
+  </div></div>`;
+}
+
 function confirmOverlay(k) {
   const c = S.buddy.confirm;
   if (c.type === 'job') {
@@ -288,16 +433,26 @@ setInterval(() => {
   if (S.mode !== 'buddy') return;
   document.querySelectorAll('[data-bclock]').forEach((el) => { el.textContent = clock(); });
   const ph = phase();
-  if (ph !== S.buddy.lastPhase && !S.buddy.confirm && S.buddy.screen !== 'routine') { S.buddy.lastPhase = ph; hooks.render(); }
+  if (ph !== S.buddy.lastPhase && !S.buddy.confirm && S.buddy.screen !== 'routine' && S.buddy.screen !== 'record') { S.buddy.lastPhase = ph; hooks.render(); }
 }, 20_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.mode === 'buddy') keepAwake(true); });
 
-let holdTimer;
+let holdTimer, gateOpenAt = 0;
+const openGate = () => { clearTimeout(holdTimer); if (Date.now() - gateOpenAt < 1500) return; gateOpenAt = Date.now(); parentGate(); };
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('[data-hold=parent]')) return;
-  holdTimer = setTimeout(parentGate, 2000);
+  holdTimer = setTimeout(openGate, 1500);
 });
-['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => document.addEventListener(t, () => clearTimeout(holdTimer)));
+['pointerup', 'pointerleave'].forEach((t) => document.addEventListener(t, () => clearTimeout(holdTimer)));
+// On Android a long press makes Chrome show its own menu (Back / Reload / Share…). Block it on the
+// Buddy, and treat the long press on the 🔒 or the clock as the grown-up gesture.
+document.addEventListener('contextmenu', (e) => {
+  if (S.mode !== 'buddy' && S.mode !== 'hub') return;
+  e.preventDefault();
+  if (e.target.closest('[data-hold=parent]')) openGate();
+});
+// the Buddy double-checks for changes every minute (e.g. "Start bedtime now" from a phone)
+setInterval(() => { if (S.mode === 'buddy' && S.user && !document.hidden) hooks.reload(); }, 60_000);
 
 function parentGate() {
   const pin = localStorage.getItem('hb.pin') || (S.api.demo ? '1234' : '');
@@ -324,7 +479,7 @@ function parentGate() {
 // ------------------------------------------------------------------ actions
 const go = (patch) => { Object.assign(S.buddy, patch); hooks.render(); };
 Object.assign(actions, {
-  'b-home': () => { tap(); go({ screen: null, confirm: null }); },
+  'b-home': () => { tap(); leaveRecorder(); go({ screen: null, confirm: null }); },
   'b-prizes': () => { tap(); talk('Here are your prizes!'); go({ screen: 'prizes' }); },
   'b-pickpet': (el) => { const p = PETS.find((x) => x.kind === el.dataset.kind); tap(); talk(`${p.label}!`); go({ pickPet: p.kind }); },
   'b-pet-ok': async () => {
@@ -372,6 +527,54 @@ Object.assign(actions, {
     input.click();
   },
   'b-cancel': () => { tap(); go({ confirm: null }); },
+  'b-news-ok': (el) => { tap(); markNews(kid(), { id: el.dataset.id, status: el.dataset.status }); hooks.render(); },
+  'b-record': () => {
+    const k = kid();
+    tap();
+    if (requestsToday(k) >= VIDEO_LIMIT_PER_DAY) { talk(`You already sent ${VIDEO_LIMIT_PER_DAY} videos today. You can send more tomorrow!`); return; }
+    talk('Show Mom and Dad something good you did! Tap the red button to start.');
+    leaveRecorder(); go({ screen: 'record' }); startCamera();
+  },
+  'b-rec-retry': () => startCamera(),
+  'b-rec-flip': () => { tap(); rec.facing = rec.facing === 'user' ? 'environment' : 'user'; startCamera(); },
+  'b-rec-start': () => {
+    if (!rec.stream) return;
+    tap();
+    rec.mime = pickMime();
+    try { rec.recorder = new MediaRecorder(rec.stream, rec.mime ? { mimeType: rec.mime, videoBitsPerSecond: 900_000 } : undefined); }
+    catch { rec.recorder = new MediaRecorder(rec.stream); }
+    rec.chunks = [];
+    rec.recorder.ondataavailable = (e) => { if (e.data?.size) rec.chunks.push(e.data); };
+    rec.recorder.onstop = () => {
+      clearInterval(rec.timer);
+      rec.blob = new Blob(rec.chunks, { type: rec.recorder?.mimeType || rec.mime || 'video/webm' });
+      rec.mime = rec.blob.type;
+      rec.url = URL.createObjectURL(rec.blob);
+      rec.state = 'review'; stopCamera();
+      talk('Great video! Do you want to send it to Mom and Dad?');
+      hooks.render();
+    };
+    rec.recorder.start(250);
+    rec.state = 'recording'; rec.left = MAX_SECONDS;
+    rec.timer = setInterval(() => {
+      rec.left -= 1;
+      const el = document.getElementById('rec-left'); if (el) el.textContent = rec.left;
+      if (rec.left <= 0 && rec.recorder?.state === 'recording') rec.recorder.stop();
+    }, 1000);
+    hooks.render();
+  },
+  'b-rec-stop': () => { tap(); if (rec.recorder?.state === 'recording') rec.recorder.stop(); },
+  'b-rec-again': () => { tap(); leaveRecorder(); startCamera(); hooks.render(); },
+  'b-rec-send': async () => {
+    const k = kid();
+    rec.state = 'sending'; hooks.render();
+    const ok = await run(() => requestStarsWithVideo(k, rec.blob, rec.mime));
+    if (!ok) { rec.state = 'review'; hooks.render(); return; }
+    celebrate({ emojis: ['🎬', '⭐', '💌'] });
+    talk('I sent your video to Mom and Dad! They will watch it soon.');
+    leaveRecorder(); go({ screen: null });
+  },
+  'b-rec-close': () => { tap(); leaveRecorder(); go({ screen: null }); },
   'b-prize': (el) => {
     const k = kid(), r = byId('rewards', el.dataset.id);
     const avail = balance(k) + pendingRedeem(k).reduce((s, x) => s + x.points, 0);
@@ -449,7 +652,7 @@ Object.assign(actions, {
   'bp-kid': () => { S.buddy.kidId = document.getElementById('bp-kid').value; localStorage.setItem('hb.buddyKid', S.buddy.kidId); document.querySelector('button[data-act=sheet-close]')?.click(); hooks.render(); },
   'bp-reset': () => {
     const k = kid();
-    ['morning', 'bedtime'].forEach((kind) => { localStorage.removeItem(routineKey(k, kind)); localStorage.removeItem(pageKey(k, kind)); });
+    ['morning', 'bedtime'].forEach((kind) => { localStorage.removeItem(routineKey(k, kind)); localStorage.removeItem(pageKey(k, kind)); localStorage.removeItem(`${pageKey(k, kind)}.timer`); });
     ['sunTapped', 'wake', 'bedtime'].forEach((w) => localStorage.removeItem(spokenKey(w)));
     toast('Routine progress restarted (stars already earned are kept)');
   },

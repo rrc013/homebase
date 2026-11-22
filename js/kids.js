@@ -8,6 +8,12 @@ import { celebrate } from './fun.js';
 import { BOOK_STEPS, artFor } from './bedtime-book.js';
 
 const PHOTO_BUCKET = 'chore-photos';
+const VIDEO_BUCKET = 'kid-videos';
+export const VIDEO_LIMIT_PER_DAY = 3;
+const GOOD_REASONS = [['💛', 'Kind to others'], ['🙌', 'Helped without being asked'], ['👂', 'Listened the first time'], ['🤝', 'Shared'],
+  ['🧹', 'Cleaned up'], ['💪', 'Tried something hard'], ['😊', 'Great attitude'], ['🍽️', 'Ate dinner nicely']];
+const OOPS_REASONS = [['👂', 'Not listening'], ['😠', 'Unkind words'], ['✋', 'Hitting or pushing'], ['🙅', 'Talking back'],
+  ['🧸', "Didn't clean up"], ['🌙', "Didn't stay in bed"]];
 export const CHORE_EMOJIS = ['🧸', '🍽️', '🐾', '🧺', '🪴', '🛏️', '🧦', '📚', '🗑️', '🧹', '🧽', '🚗', '🥕', '🎒', '👟', '🪥', '🐶', '🐱', '🧼', '🌳', '📬', '🎹', '✏️', '⭐'];
 export const REWARD_EMOJIS = ['🍦', '🎬', '🛝', '🌙', '🎨', '🧸', '🍕', '🎮', '📱', '🎁', '🍪', '🏊', '🎳', '🛍️', '💵', '🦄'];
 const STEP_PRESETS = [['🚽', 'Go potty'], ['🪥', 'Brush your teeth'], ['👗', 'Get dressed'], ['🥣', 'Eat breakfast'], ['🎒', 'Get your backpack'],
@@ -97,6 +103,17 @@ export async function setBedtimeNow(kid, on) {
   if (ok) await hooks.loadAll();
   return ok;
 }
+// "I did something good!" video from the Buddy
+export const requestsToday = (kid) => S.data.completions.filter((x) => x.member_id === kid.id && x.kind === 'request' && x.day === todayStr()).length;
+export async function requestStarsWithVideo(kid, blob, mime) {
+  const ext = /mp4/.test(mime) ? 'mp4' : 'webm';
+  const path = await S.api.uploadMedia(household().id, blob, VIDEO_BUCKET, ext, mime || 'video/webm');
+  const saved = await S.api.insert('completions', { ...baseRow(kid), kind: 'request', title: 'Something good I did', emoji: '🎬',
+    points: 0, status: 'pending', photo_path: path });
+  S.data.completions.push(saved);
+  S.api.fn('notify', { action: 'approval', completion_id: saved.id }).catch(() => {});
+  return saved;
+}
 export const pendingRedeem = (kid) => ledger(kid).filter((x) => x.kind === 'redeem' && x.status === 'pending');
 
 // make sure every kid has a profile + starter routines (parents' devices do this once)
@@ -169,6 +186,15 @@ export function viewKids() {
 
 function approvalRow(x) {
   const kid = byId('members', x.member_id);
+  if (x.kind === 'request') {
+    return `
+    <div class="approval">
+      <button class="appr-photo video" data-act="appr-video" data-id="${x.id}">🎬</button>
+      <span class="appr-text"><strong>${esc(kid?.name || '')} sent a video 🙋</strong><small>Something good she did · ${relTime(x.created_at)}</small></span>
+      <button class="btn small-btn danger ghost" data-act="appr-no" data-id="${x.id}">Not this time</button>
+      <button class="btn small-btn primary" data-act="appr-video" data-id="${x.id}">▶ Watch</button>
+    </div>`;
+  }
   const url = x.photo_path && S.photoUrls[x.photo_path];
   const isRedeem = x.kind === 'redeem';
   return `
@@ -217,7 +243,7 @@ export function kidCard(kid, { compact = false } = {}) {
         ${prof.bedtime_now === todayStr()
           ? (routineDone(kid, 'bedtime') ? `<button class="btn small-btn night-btn" data-act="kid-bedtime" data-id="${kid.id}" data-on="1">🌙 Start bedtime again</button>` : `<button class="btn small-btn night-btn on" data-act="kid-bedtime" data-id="${kid.id}" data-on="">🌙 Bedtime started · Cancel</button>`)
           : `<button class="btn small-btn night-btn" data-act="kid-bedtime" data-id="${kid.id}" data-on="1">🌙 Start bedtime now</button>`}
-        <button class="btn small-btn" data-act="kid-bonus" data-id="${kid.id}">＋ Bonus stars</button>
+        <button class="btn small-btn" data-act="kid-bonus" data-id="${kid.id}">⭐ ± Stars</button>
         <button class="btn small-btn ghost" data-act="kids-view" data-view="activity:${kid.id}">📜 Activity</button>
         <button class="btn small-btn ghost" data-act="kid-settings" data-id="${kid.id}">⚙️ Pet, routines & bedtime</button>
       </div>` : ''}
@@ -264,6 +290,7 @@ function viewActivity(kid) {
         <span class="item-main" style="flex:1"><span class="item-text">${esc(x.title)}</span>
           <span class="meta"><span>${new Date(x.day + 'T12:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
           ${x.status !== 'approved' ? `<span>${x.status === 'pending' ? '⏳ waiting' : '✗ not approved'}</span>` : ''}${x.note ? `<span>${esc(x.note)}</span>` : ''}</span></span>
+        ${x.kind === 'request' && x.photo_path && x.status !== 'rejected' ? `<button class="btn small-btn" data-act="watch-video" data-id="${x.id}">▶</button>` : ''}
         <b class="${x.points < 0 ? 'neg' : 'pos'}">${x.points > 0 ? '+' : ''}${x.points}</b>
         ${me()?.kind === 'parent' ? `<button class="icon-btn" data-act="ledger-undo" data-id="${x.id}" aria-label="Undo">↩︎</button>` : ''}
       </li>`).join('') || '<li class="empty small">Nothing yet.</li>'}</ul>`;
@@ -341,23 +368,54 @@ function sheetReward(r) {
   });
 }
 
-function sheetBonus(kid) {
+function sheetBonus(kid, mode = 'good') {
+  const good = mode === 'good';
+  const reasons = good ? GOOD_REASONS : OOPS_REASONS;
   openSheet(`
-    <h2>Stars for ${esc(kid.name)}</h2>
-    <p class="muted small">Catch them being good! Bonus stars count toward rewards and grow the pet.</p>
-    <div class="picker" data-picker="points"><input type="hidden" name="points" value="2">
-      ${[1, 2, 3, 5, 10].map((n) => `<button type="button" class="person ${n === 2 ? 'on' : ''}" data-pick="${n}">+${n} ⭐</button>`).join('')}
-      ${[-1, -5].map((n) => `<button type="button" class="person neg" data-pick="${n}">${n}</button>`).join('')}</div>
-    <label>Why?<input name="note" placeholder="Helped with groceries, shared with a friend…" data-focus></label>
+    <div class="seg"><button type="button" class="${good ? 'on' : ''}" data-act="bonus-mode" data-kid="${kid.id}" data-mode="good">⭐ Good job</button>
+      <button type="button" class="${good ? '' : 'on'}" data-act="bonus-mode" data-kid="${kid.id}" data-mode="oops">➖ Oops</button></div>
+    <h2>${good ? `Stars for ${esc(kid.name)}` : `Take stars from ${esc(kid.name)}`}</h2>
+    <div class="stepper"><button type="button" data-act="bonus-step" data-d="-1">−</button>
+      <input type="number" name="amount" min="1" max="100" value="${good ? 2 : 1}" inputmode="numeric"><span>⭐</span>
+      <button type="button" data-act="bonus-step" data-d="1">＋</button></div>
+    <label>Why?<span></span></label>
+    <div class="picker">${reasons.map(([e, t]) => `<button type="button" class="person" data-act="bonus-reason" data-text="${esc(t)}" data-emoji="${e}">${e} ${esc(t)}</button>`).join('')}</div>
+    <input name="note" placeholder="${good ? 'Or type your own: helped Grandma…' : 'Or type your own reason'}">
+    <input type="hidden" name="emoji" value="${good ? '🌟' : '➖'}">
+    <small class="muted">${good ? `${esc(kid.name)}'s Buddy will cheer and tell her why.` : `${esc(kid.name)}'s Buddy tells her gently, and that she can earn them back by being kind and helpful.`}</small>
     <div class="row between"><span></span>
-      <div class="row"><button class="btn ghost" type="button" data-act="sheet-close">Cancel</button><button class="btn primary" type="submit" value="save">Give stars</button></div></div>`,
+      <div class="row"><button class="btn ghost" type="button" data-act="sheet-close">Cancel</button>
+      <button class="btn ${good ? 'primary' : 'danger'}" type="submit" value="save">${good ? 'Give stars' : 'Take stars'}</button></div></div>`,
   async (f) => {
-    const pts = +f.get('points');
+    const n = Math.max(1, Math.min(100, Math.round(+f.get('amount') || 1)));
+    const pts = good ? n : -n;
     const note = f.get('note').trim();
-    await run(() => S.api.insert('completions', { ...baseRow(kid), kind: 'bonus', title: note || (pts > 0 ? 'Bonus stars' : 'Stars removed'),
-      emoji: pts > 0 ? '🌟' : '➖', points: pts, status: 'approved', note: note || null }), pts > 0 ? `+${pts} ⭐ for ${kid.name}!` : 'Stars removed');
-    if (pts > 0) celebrate();
+    await run(() => S.api.insert('completions', { ...baseRow(kid), kind: 'bonus', title: note || (good ? 'Bonus stars' : 'Stars taken away'),
+      emoji: f.get('emoji') || (good ? '🌟' : '➖'), points: pts, status: 'approved', note: note || null }),
+    good ? `+${n} ⭐ for ${kid.name}!` : `−${n} ⭐ for ${kid.name}`);
+    if (good) celebrate();
   });
+}
+
+function sheetVideo(x, { review: canReview = true } = {}) {
+  const kid = byId('members', x.member_id);
+  const url = S.photoUrls[x.photo_path];
+  const pending = x.status === 'pending' && canReview && me()?.kind === 'parent';
+  openSheet(`
+    <h2>🎬 ${esc(kid?.name || '')}'s video</h2>
+    <small class="muted">${new Date(x.created_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}${x.status === 'approved' ? ` · earned ${x.points} ⭐` : ''}</small>
+    ${url ? `<video class="kid-video" src="${esc(url)}" controls autoplay playsinline></video>` : '<p class="muted">Loading video… close and reopen in a moment.</p>'}
+    ${pending ? `<label>How many stars?<span></span></label>
+      <div class="picker" data-picker="points"><input type="hidden" name="points" value="2">
+        ${[1, 2, 3, 5].map((n) => `<button type="button" class="person ${n === 2 ? 'on' : ''}" data-pick="${n}">${n} ⭐</button>`).join('')}</div>
+      <input name="note" placeholder="What did she do? (she'll hear it) e.g. cleaned her room">
+      <div class="row between"><button class="btn danger ghost" type="submit" value="no">Not this time</button>
+        <button class="btn primary" type="submit" value="yes">Approve ⭐</button></div>`
+      : '<button class="btn ghost" type="button" data-act="sheet-close">Close</button>'}`,
+  pending ? async (f, action) => {
+    const note = (f.get('note') || '').trim();
+    await review(x, action === 'yes', { points: +f.get('points') || 1, note });
+  } : null);
 }
 
 function sheetKidSettings(kid) {
@@ -437,7 +495,16 @@ function sheetPhoto(x) {
     </div>`, async (_f, action) => { await review(x, action === 'yes'); });
 }
 
-async function review(x, ok) {
+async function review(x, ok, extra = {}) {
+  if (x.kind === 'request') {
+    const patch = { status: ok ? 'approved' : 'rejected', reviewed_by: me().id };
+    if (ok) { patch.points = extra.points || 1; if (extra.note) { patch.note = extra.note; patch.title = extra.note; } }
+    await run(() => S.api.update('completions', x.id, patch), ok ? `+${patch.points} ⭐ — saved to Proud Moments` : 'Okay — video deleted');
+    if (!ok && x.photo_path) S.api.deletePhoto(x.photo_path, VIDEO_BUCKET).catch(() => {});
+    if (ok) celebrate();
+    await hooks.loadAll(); hooks.render();
+    return;
+  }
   if (x.kind === 'redeem' && ok) {
     const kid = byId('members', x.member_id);
     if (balance(kid) < -x.points && !confirm(`${kid.name} only has ${balance(kid)} ⭐. Approve anyway?`)) return;
@@ -449,7 +516,9 @@ async function review(x, ok) {
 }
 
 export async function signChorePhotos() {
-  const missing = S.data.completions.filter((x) => x.status === 'pending' && x.photo_path && !S.photoUrls[x.photo_path]).map((x) => x.photo_path);
+  const vids = S.data.completions.filter((x) => x.kind === 'request' && x.status !== 'rejected' && x.photo_path && !S.photoUrls[x.photo_path]).map((x) => x.photo_path);
+  if (vids.length) Object.assign(S.photoUrls, await S.api.photoUrls(vids, VIDEO_BUCKET).catch(() => ({})));
+  const missing = S.data.completions.filter((x) => x.kind !== 'request' && x.status === 'pending' && x.photo_path && !S.photoUrls[x.photo_path]).map((x) => x.photo_path);
   if (missing.length) Object.assign(S.photoUrls, await S.api.photoUrls(missing, PHOTO_BUCKET).catch(() => ({})));
 }
 
@@ -466,6 +535,18 @@ Object.assign(actions, {
   'reward-new': () => sheetReward(null),
   'reward-edit': (el) => sheetReward(byId('rewards', el.dataset.id)),
   'kid-bonus': (el) => sheetBonus(byId('members', el.dataset.id)),
+  'bonus-mode': (el) => sheetBonus(byId('members', el.dataset.kid), el.dataset.mode),
+  'bonus-step': (el) => {
+    const i = document.querySelector('#sheet-form [name=amount]');
+    i.value = Math.max(1, Math.min(100, (+i.value || 1) + +el.dataset.d));
+  },
+  'bonus-reason': (el) => {
+    document.querySelector('#sheet-form [name=note]').value = el.dataset.text;
+    document.querySelector('#sheet-form [name=emoji]').value = el.dataset.emoji;
+    el.parentElement.querySelectorAll('.person').forEach((b) => b.classList.toggle('on', b === el));
+  },
+  'appr-video': (el) => sheetVideo(byId('completions', el.dataset.id)),
+  'watch-video': (el) => sheetVideo(byId('completions', el.dataset.id), { review: false }),
   'kid-bedtime': async (el) => {
     const kid = byId('members', el.dataset.id);
     if (el.dataset.on && !confirm(`Start bedtime now? ${kid.name}'s Buddy will switch to the bedtime routine.`)) return;
@@ -505,7 +586,7 @@ Object.assign(actions, {
     const x = byId('completions', el.dataset.id);
     if (!confirm(`Undo "${x.title}" (${x.points > 0 ? '+' : ''}${x.points} ⭐)?`)) return;
     await run(() => S.api.remove('completions', x.id), 'Undone');
-    if (x.photo_path) S.api.deletePhoto(x.photo_path, PHOTO_BUCKET).catch(() => {});
+    if (x.photo_path) S.api.deletePhoto(x.photo_path, x.kind === 'request' ? VIDEO_BUCKET : PHOTO_BUCKET).catch(() => {});
   },
   // tapping a chore tile on a parent's phone or the hub
   'kid-chore': async (el) => {

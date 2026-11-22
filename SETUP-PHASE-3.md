@@ -40,6 +40,20 @@ Allow about 20 minutes. Nothing changes in Google Cloud or the server function t
    - exit Buddy mode
 6. Turn the tablet's volume up so she hears the voice.
 
+## ± Stars and "I did something good!" videos
+**Setup (once):**
+1. In Supabase, go to **SQL Editor** → **New query**, paste `supabase/09-video-requests.sql`, and click **Run**. Choose **Run and enable RLS** if it asks.
+2. If you set up phone notifications, update the **notify** function: **Edge Functions** → **notify** → **Code**, replace everything with the new `supabase/functions/notify/index.ts`, and click **Deploy**. Keep **Verify JWT** OFF. This makes the notification say "Harper sent you a video."
+3. Upload the app files to GitHub as usual.
+4. The first time Harper taps **🙋 I did something good!**, the tablet asks for **camera and microphone** permission. Tap **Allow**.
+
+**Using it:**
+- **⭐ ± Stars** on Harper's card: choose **Good job** or **Oops**, pick an amount and a reason (or type one), and save. Her Buddy announces it: cheering for stars given, and gently for stars taken, with a reminder she can earn them back.
+- **Harper's Buddy → 🙋 I did something good!**: she records up to 20 seconds with sound (🔄 switches between cameras), watches it, then taps **Send to Mom & Dad**. She can send up to 3 a day.
+- **You:** it shows up under **⏳ Waiting for you**, and your phone pings if notifications are on. Tap **▶ Watch**, pick 1, 2, 3 or 5 stars, optionally say what she did, and tap **Approve**. Her Buddy then says, for example, "Daddy watched your video! You earned 3 stars for cleaning her room!"
+- **Not this time** deletes the video and lets her know kindly.
+- Approved videos are kept as **Proud Moments**. Find them under **📜 Activity** and tap **▶** to rewatch.
+
 ## Starting bedtime
 - **Automatic:** at the **Bedtime routine starts** time, her Buddy turns dim, says "Let's do your bedtime routine," and shows **🌙 Bedtime routine – Start**.
 - **Manual (early nights):** tap **🌙 Start bedtime now** on Harper's card in the **Kids** tab, or in the Buddy's grown-up menu. Her Buddy switches within a few seconds. Tap again to cancel.

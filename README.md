@@ -113,6 +113,7 @@ When I send updated files, upload them to the repo the same way (replace existin
 | `js/kids.js`, `js/buddy.js`, `js/pets.js`, `js/fun.js` | Kids tab, kid's Buddy screen, virtual pet, voice and celebrations |
 | `SETUP-PHASE-3.md` | Step-by-step setup for chores and the Buddy |
 | `supabase/08-bedtime-now.sql` | "Start bedtime now" button: run once, after 05 |
+| `supabase/09-video-requests.sql` | Kids' video requests: run once, after 05 |
 | `supabase/06-notifications.sql` | Phone notifications: run once, after 05 |
 | `supabase/07-reminder-schedule.sql` | Every-minute reminder check (put your project URL in first) |
 | `supabase/functions/notify/index.ts` | Notifications server function (Verify JWT off) |
